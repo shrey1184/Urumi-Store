@@ -2,6 +2,10 @@
 ingress:
   className: "nginx"
   annotations: {}
+  tls:
+    - secretName: local-store-tls
+      hosts:
+        - "{{ .storeName }}.local.store.dev"
 
 mysql:
   storage:

@@ -174,6 +174,25 @@ class KubernetesClient:
             else:
                 raise
 
+    def create_tls_secret(self, namespace: str, secret_name: str, cert_data: bytes, key_data: bytes):
+        """Create a TLS secret in the namespace."""
+        secret = client.V1Secret(
+            metadata=client.V1ObjectMeta(name=secret_name),
+            type="kubernetes.io/tls",
+            data={
+                "tls.crt": cert_data,
+                "tls.key": key_data,
+            },
+        )
+        try:
+            self.core_v1.create_namespaced_secret(namespace=namespace, body=secret)
+            logger.info("Created TLS secret %s in %s", secret_name, namespace)
+        except ApiException as e:
+            if e.status == 409:
+                logger.warning("TLS secret %s already exists in %s", secret_name, namespace)
+            else:
+                raise
+
 
 # Global singleton
 k8s_client = KubernetesClient()

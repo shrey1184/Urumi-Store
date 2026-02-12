@@ -4,6 +4,7 @@ Runs provisioning in background tasks for non-blocking API responses.
 """
 
 import asyncio
+import base64
 import logging
 import os
 import secrets
@@ -35,11 +36,11 @@ def _get_namespace(store_name: str) -> str:
 
 
 def _get_store_url(store_name: str) -> str:
-    return f"http://{store_name}.{settings.BASE_DOMAIN}"
+    return f"https://{store_name}.{settings.BASE_DOMAIN}"
 
 
 def _get_admin_url(store_name: str, store_type: StoreType) -> str:
-    return f"http://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
+    return f"https://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
 
 
 class StoreOrchestrator:
@@ -81,6 +82,10 @@ class StoreOrchestrator:
         logger.info("[%s] Applying resource guardrails", store.name)
         k8s_client.apply_resource_quota(namespace)
         k8s_client.apply_limit_range(namespace)
+
+        # Step 2.5: Create TLS secret for HTTPS
+        logger.info("[%s] Creating TLS secret", store.name)
+        self._create_tls_secret(namespace)
 
         # Step 3: Helm install the store chart
         logger.info("[%s] Installing Helm chart", store.name)
@@ -156,6 +161,23 @@ class StoreOrchestrator:
         """Resolve the Helm chart path for a store type."""
         base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "helm"))
         return os.path.join(base, "woocommerce")
+
+    def _create_tls_secret(self, namespace: str):
+        """Copy the TLS certificate to the namespace."""
+        # Read the cert and key from /tmp (created during setup)
+        cert_path = "/tmp/tls.crt"
+        key_path = "/tmp/tls.key"
+        
+        if not os.path.exists(cert_path) or not os.path.exists(key_path):
+            logger.warning("TLS cert/key not found, skipping HTTPS setup")
+            return
+            
+        with open(cert_path, "rb") as f:
+            cert_data = base64.b64encode(f.read())
+        with open(key_path, "rb") as f:
+            key_data = base64.b64encode(f.read())
+        
+        k8s_client.create_tls_secret(namespace, "local-store-tls", cert_data, key_data)
 
     def _build_helm_values(self, store: Store, wp_password: str, db_password: str) -> dict:
         """Build Helm --set values for store provisioning."""
