@@ -21,7 +21,7 @@ export default function Dashboard() {
     try {
       const res = await getStores();
       setStores(res.data.stores);
-    } catch (err) {
+    } catch {
       toast.error("Failed to fetch stores");
     } finally {
       setLoading(false);
