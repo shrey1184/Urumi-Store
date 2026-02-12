@@ -7,13 +7,13 @@ RUN apt-get update && apt-get install -y curl && \
     curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY Backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ app/
+COPY Backend/app/ app/
 
 # Copy helm charts into the image
-COPY ../helm/ /helm/
+COPY helm/ /helm/
 
 ENV PYTHONUNBUFFERED=1
 ENV HELM_BINARY=helm

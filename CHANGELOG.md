@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Comprehensive test coverage
-- MedusaJS store type completion
 - Prometheus metrics export
 - Store backup/restore functionality
 - Multi-cluster support

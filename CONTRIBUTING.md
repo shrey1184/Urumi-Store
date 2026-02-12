@@ -86,7 +86,6 @@ Example: `feat: add support for Shopify store type`
 - [ ] Add store backup/restore functionality
 
 ### Medium Priority
-- [ ] Add MedusaJS store implementation (currently WooCommerce only)
 - [ ] Implement store cloning
 - [ ] Add resource usage monitoring dashboard
 - [ ] Support multiple K8s clusters
@@ -95,7 +94,7 @@ Example: `feat: add support for Shopify store type`
 ### Nice to Have
 - [ ] Add CI/CD pipeline (GitHub Actions)
 - [ ] Create video tutorials
-- [ ] Add more ecommerce platforms (Shopify, Magento)
+- [ ] Add more ecommerce platforms (Shopify, other engines)
 - [ ] Implement A/B testing for stores
 - [ ] Add cost estimation per store
 

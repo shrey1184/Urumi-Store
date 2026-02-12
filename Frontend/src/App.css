@@ -446,6 +446,33 @@ code {
   color: var(--text-muted);
 }
 
+/* ─── Store Type Info (Fixed Display) ─── */
+.store-type-info {
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.store-type-info div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.store-type-info strong {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.store-type-info span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ─── Empty / Loading ─── */
 .empty-state, .loading-state {
   text-align: center;

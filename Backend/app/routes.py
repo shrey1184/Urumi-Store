@@ -1,25 +1,25 @@
 """
 API routes for store CRUD operations.
 """
-import asyncio
-import logging
-from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy import select, func
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
 from app.k8s_client import k8s_client
-from app.models import Store, StoreStatus, StoreType
-from app.orchestrator import orchestrator, _get_namespace
+from app.models import Store, StoreStatus
+from app.orchestrator import _get_namespace, orchestrator
 from app.schemas import (
-    StoreCreateRequest,
-    StoreResponse,
-    StoreListResponse,
-    MessageResponse,
     HealthResponse,
+    MessageResponse,
+    StoreCreateRequest,
+    StoreListResponse,
+    StoreResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def health_check():
     # Try to reconnect if disconnected
     if not k8s_client.connected:
         k8s_client.connect()
-    
+
     return HealthResponse(
         status="ok",
         kubernetes_connected=k8s_client.connected,
@@ -121,7 +121,7 @@ async def delete_store(
 
     # Mark as deleting
     store.status = StoreStatus.DELETING
-    store.updated_at = datetime.now(timezone.utc)
+    store.updated_at = datetime.now(UTC)
     await db.commit()
 
     # Kick off deletion in background

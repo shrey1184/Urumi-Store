@@ -2,15 +2,15 @@
 Store provisioning orchestrator — handles the full lifecycle of creating/deleting stores.
 Runs provisioning in background tasks for non-blocking API responses.
 """
+
 import asyncio
 import logging
 import os
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session
@@ -39,9 +39,7 @@ def _get_store_url(store_name: str) -> str:
 
 
 def _get_admin_url(store_name: str, store_type: StoreType) -> str:
-    if store_type == StoreType.WOOCOMMERCE:
-        return f"http://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
-    return f"http://admin.{store_name}.{settings.BASE_DOMAIN}"
+    return f"http://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
 
 
 class StoreOrchestrator:
@@ -60,9 +58,7 @@ class StoreOrchestrator:
                 await self._provision(store)
             except Exception as e:
                 logger.exception("Failed to provision store %s: %s", store.name, e)
-                await self._update_store_status(
-                    store.id, StoreStatus.FAILED, error=str(e)
-                )
+                await self._update_store_status(store.id, StoreStatus.FAILED, error=str(e))
             finally:
                 _provisioning_locks.pop(store.id, None)
 
@@ -158,14 +154,8 @@ class StoreOrchestrator:
 
     def _get_chart_path(self, store_type: StoreType) -> str:
         """Resolve the Helm chart path for a store type."""
-        base = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "helm")
-        )
-        if store_type == StoreType.WOOCOMMERCE:
-            return os.path.join(base, "woocommerce")
-        elif store_type == StoreType.MEDUSAJS:
-            return os.path.join(base, "medusajs")
-        raise ValueError(f"Unknown store type: {store_type}")
+        base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "helm"))
+        return os.path.join(base, "woocommerce")
 
     def _build_helm_values(self, store: Store, wp_password: str, db_password: str) -> dict:
         """Build Helm --set values for store provisioning."""
@@ -174,26 +164,14 @@ class StoreOrchestrator:
             "baseDomain": settings.BASE_DOMAIN,
             "ingress.className": settings.INGRESS_CLASS,
             "ingress.host": f"{store.name}.{settings.BASE_DOMAIN}",
+            "wordpress.adminUser": "admin",
+            "wordpress.adminPassword": wp_password,
+            "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+            "mysql.rootPassword": db_password,
+            "mysql.database": "wordpress",
+            "mysql.user": "wordpress",
+            "mysql.password": db_password,
         }
-
-        if store.store_type == StoreType.WOOCOMMERCE:
-            values.update({
-                "wordpress.adminUser": "admin",
-                "wordpress.adminPassword": wp_password,
-                "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
-                "mysql.rootPassword": db_password,
-                "mysql.database": "wordpress",
-                "mysql.user": "wordpress",
-                "mysql.password": db_password,
-            })
-        elif store.store_type == StoreType.MEDUSAJS:
-            values.update({
-                "medusa.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
-                "medusa.adminPassword": wp_password,
-                "postgres.password": db_password,
-                "postgres.database": "medusa",
-            })
-
         return values
 
     async def _update_store_status(
@@ -211,7 +189,7 @@ class StoreOrchestrator:
             store = result.scalar_one_or_none()
             if store:
                 store.status = status
-                store.updated_at = datetime.now(timezone.utc)
+                store.updated_at = datetime.now(UTC)
                 if error:
                     store.error_message = error
                 if store_url:

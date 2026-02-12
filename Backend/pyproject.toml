@@ -3,6 +3,16 @@
 target-version = "py311"
 line-length = 100
 
+# Exclude directories
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint]
 # Enable common rules
 select = [
     "E",  # pycodestyle errors
@@ -18,16 +28,7 @@ ignore = [
     "E501",  # line too long (handled by black)
 ]
 
-# Exclude directories
-exclude = [
-    ".git",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".pytest_cache",
-]
-
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 
 [tool.black]

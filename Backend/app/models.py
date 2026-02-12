@@ -1,20 +1,23 @@
 """
 SQLAlchemy models for the store provisioning platform.
 """
-import uuid
-from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Enum as SAEnum, Text
-from sqlalchemy.dialects.sqlite import JSON
-from app.database import Base
+
 import enum
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, String, Text
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.sqlite import JSON
+
+from app.database import Base
 
 
-class StoreType(str, enum.Enum):
+class StoreType(enum.StrEnum):
     WOOCOMMERCE = "woocommerce"
-    MEDUSAJS = "medusajs"
 
 
-class StoreStatus(str, enum.Enum):
+class StoreStatus(enum.StrEnum):
     PROVISIONING = "provisioning"
     READY = "ready"
     FAILED = "failed"
@@ -32,11 +35,11 @@ class Store(Base):
     store_url = Column(String, nullable=True)
     admin_url = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
     metadata_json = Column(JSON, nullable=True)  # Extra info (credentials, etc.)

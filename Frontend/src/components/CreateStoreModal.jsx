@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createStore } from "../api";
 import toast from "react-hot-toast";
-import { Plus, X, ShoppingBag, Store } from "lucide-react";
+import { Plus, X, ShoppingBag } from "lucide-react";
 
 const STORE_TYPES = [
   {
@@ -10,17 +10,11 @@ const STORE_TYPES = [
     desc: "WordPress + WooCommerce — full-featured ecommerce",
     icon: ShoppingBag,
   },
-  {
-    value: "medusajs",
-    label: "MedusaJS",
-    desc: "Headless commerce engine — React-based",
-    icon: Store,
-  },
 ];
 
 export default function CreateStoreModal({ open, onClose, onCreated }) {
   const [name, setName] = useState("");
-  const [storeType, setStoreType] = useState("woocommerce");
+  const [storeType] = useState("woocommerce"); // Fixed to WooCommerce only
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -93,23 +87,12 @@ export default function CreateStoreModal({ open, onClose, onCreated }) {
 
           <div className="form-group">
             <label>Store Engine</label>
-            <div className="store-type-options">
-              {STORE_TYPES.map((t) => {
-                const Icon = t.icon;
-                return (
-                  <div
-                    key={t.value}
-                    className={`store-type-card ${
-                      storeType === t.value ? "selected" : ""
-                    }`}
-                    onClick={() => !loading && setStoreType(t.value)}
-                  >
-                    <Icon size={24} />
-                    <strong>{t.label}</strong>
-                    <span>{t.desc}</span>
-                  </div>
-                );
-              })}
+            <div className="store-type-info">
+              <ShoppingBag size={24} />
+              <div>
+                <strong>WooCommerce</strong>
+                <span>WordPress + WooCommerce — full-featured ecommerce</span>
+              </div>
             </div>
           </div>
 

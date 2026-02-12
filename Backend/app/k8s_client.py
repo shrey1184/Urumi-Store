@@ -1,9 +1,13 @@
 """
 Kubernetes client wrapper — handles both in-cluster and kubeconfig auth.
 """
+
 import logging
-from kubernetes import client, config as k8s_config
+
+from kubernetes import client
+from kubernetes import config as k8s_config
 from kubernetes.client.rest import ApiException
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -112,9 +116,7 @@ class KubernetesClient:
                 {
                     "name": pod.metadata.name,
                     "status": pod.status.phase,
-                    "ready": all(
-                        c.ready for c in (pod.status.container_statuses or [])
-                    ),
+                    "ready": all(c.ready for c in (pod.status.container_statuses or [])),
                 }
                 for pod in pods.items
             ]
@@ -140,9 +142,7 @@ class KubernetesClient:
             ),
         )
         try:
-            self.core_v1.create_namespaced_resource_quota(
-                namespace=namespace, body=quota
-            )
+            self.core_v1.create_namespaced_resource_quota(namespace=namespace, body=quota)
             logger.info("Applied ResourceQuota to %s", namespace)
         except ApiException as e:
             if e.status == 409:
@@ -166,9 +166,7 @@ class KubernetesClient:
             ),
         )
         try:
-            self.core_v1.create_namespaced_limit_range(
-                namespace=namespace, body=limit_range
-            )
+            self.core_v1.create_namespaced_limit_range(namespace=namespace, body=limit_range)
             logger.info("Applied LimitRange to %s", namespace)
         except ApiException as e:
             if e.status == 409:

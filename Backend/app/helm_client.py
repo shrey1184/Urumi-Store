@@ -1,9 +1,11 @@
 """
 Helm wrapper — shells out to helm CLI to install/upgrade/delete releases.
 """
+
 import asyncio
 import logging
 import os
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -53,9 +55,11 @@ class HelmClient:
             "install",
             release_name,
             chart_path,
-            "--namespace", namespace,
+            "--namespace",
+            namespace,
             "--create-namespace",
-            "--timeout", timeout,
+            "--timeout",
+            timeout,
         ]
 
         if wait:
@@ -81,12 +85,15 @@ class HelmClient:
     ) -> tuple[bool, str]:
         """Upgrade (or install) a Helm release."""
         args = [
-            "upgrade", "--install",
+            "upgrade",
+            "--install",
             release_name,
             chart_path,
-            "--namespace", namespace,
+            "--namespace",
+            namespace,
             "--wait",
-            "--timeout", "300s",
+            "--timeout",
+            "300s",
         ]
 
         if values_file:
@@ -102,8 +109,10 @@ class HelmClient:
     async def uninstall(self, release_name: str, namespace: str) -> tuple[bool, str]:
         """Uninstall a Helm release."""
         args = [
-            "uninstall", release_name,
-            "--namespace", namespace,
+            "uninstall",
+            release_name,
+            "--namespace",
+            namespace,
         ]
         rc, stdout, stderr = await self._run(args)
         return rc == 0, stdout if rc == 0 else stderr
@@ -111,8 +120,10 @@ class HelmClient:
     async def status(self, release_name: str, namespace: str) -> tuple[bool, str]:
         """Get helm release status."""
         args = [
-            "status", release_name,
-            "--namespace", namespace,
+            "status",
+            release_name,
+            "--namespace",
+            namespace,
         ]
         rc, stdout, stderr = await self._run(args)
         return rc == 0, stdout if rc == 0 else stderr
@@ -128,11 +139,15 @@ class HelmClient:
         rc, stdout, stderr = await self._run(args)
         return rc == 0, stdout if rc == 0 else stderr
 
-    async def rollback(self, release_name: str, namespace: str, revision: int = 0) -> tuple[bool, str]:
+    async def rollback(
+        self, release_name: str, namespace: str, revision: int = 0
+    ) -> tuple[bool, str]:
         """Rollback a Helm release."""
         args = [
-            "rollback", release_name,
-            "--namespace", namespace,
+            "rollback",
+            release_name,
+            "--namespace",
+            namespace,
             "--wait",
         ]
         if revision > 0:

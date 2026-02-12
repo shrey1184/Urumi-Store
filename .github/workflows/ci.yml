@@ -69,9 +69,6 @@ jobs:
       - name: Lint WooCommerce chart
         run: helm lint helm/woocommerce/
       
-      - name: Lint MedusaJS chart
-        run: helm lint helm/medusajs/
-      
       - name: Lint Platform chart
         run: helm lint helm/platform/
 
@@ -83,8 +80,7 @@ jobs:
       
       - name: Build Backend image
         run: |
-          cd Backend
-          docker build -t urumi-backend:test .
+          docker build -f Backend/Dockerfile -t urumi-backend:test .
       
       - name: Build Frontend image
         run: |

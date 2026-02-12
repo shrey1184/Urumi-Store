@@ -1,10 +1,12 @@
 """
 Pydantic schemas for request/response models.
 """
+
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
-from app.models import StoreType, StoreStatus
+
+from app.models import StoreStatus, StoreType
 
 
 # ---------- Request Schemas ----------
@@ -20,9 +22,9 @@ class StoreResponse(BaseModel):
     store_type: StoreType
     status: StoreStatus
     namespace: str
-    store_url: Optional[str] = None
-    admin_url: Optional[str] = None
-    error_message: Optional[str] = None
+    store_url: str | None = None
+    admin_url: str | None = None
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -36,7 +38,7 @@ class StoreListResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
-    store_id: Optional[str] = None
+    store_id: str | None = None
 
 
 class HealthResponse(BaseModel):

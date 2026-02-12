@@ -1,6 +1,6 @@
 # Urumi-Ai: Kubernetes-Native Store Provisioning Platform
 
-**Provision fully-functional ecommerce stores on-demand** — WooCommerce or MedusaJS — via a React dashboard backed by a FastAPI orchestrator and Helm charts running on Kubernetes.
+**Provision fully-functional WooCommerce ecommerce stores on-demand** — via a React dashboard backed by a FastAPI orchestrator and Helm charts running on Kubernetes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -8,13 +8,13 @@
 
 ## 🚀 What is this?
 
-A production-grade platform that automates ecommerce store deployment on Kubernetes:
+A production-grade platform that automates WooCommerce store deployment on Kubernetes:
 
 - 🎯 **Create stores in one click** — React UI triggers automated Helm deployments
 - ⚡ **Background provisioning** — FastAPI handles async orchestration
 - 🔒 **Multi-tenant isolation** — Each store gets its own namespace with resource quotas
 - 🛠️ **Full lifecycle management** — Create, monitor, and delete stores via REST API
-- 🎨 **Two store types** — WooCommerce (WordPress + MySQL) or MedusaJS (Node + PostgreSQL + Redis)
+- 🎨 **WooCommerce stores** — WordPress + WooCommerce + MySQL fully configured
 
 ---
 
@@ -28,16 +28,18 @@ A production-grade platform that automates ecommerce store deployment on Kuberne
 └─────────────────┘     └──────────────────┘     │  ┌──────────────────┐ │
                               │                    │  │ store-myshop     │ │
                               │  Helm install/     │  │  ├ WordPress     │ │
-                              │  uninstall         │  │  ├ MySQL         │ │
-                              └───────────────────▶│  │  ├ Ingress       │ │
+                              │  uninstall         │  │  ├ WooCommerce   │ │
+                              └───────────────────▶│  │  ├ MySQL         │ │
+                                                   │  │  ├ Ingress       │ │
                                                    │  │  └ PVCs          │ │
                                                    │  └──────────────────┘ │
                                                    │  ┌──────────────────┐ │
-                                                   │  │ store-other      │ │
-                                                   │  │  ├ Medusa        │ │
-                                                   │  │  ├ PostgreSQL    │ │
-                                                   │  │  ├ Redis         │ │
-                                                   │  │  └ Ingress       │ │
+                                                   │  │ store-shop2      │ │
+                                                   │  │  ├ WordPress     │ │
+                                                   │  │  ├ WooCommerce   │ │
+                                                   │  │  ├ MySQL         │ │
+                                                   │  │  ├ Ingress       │ │
+                                                   │  │  └ PVCs          │ │
                                                    │  └──────────────────┘ │
                                                    └──────────────────────┘
 ```
@@ -49,8 +51,7 @@ A production-grade platform that automates ecommerce store deployment on Kuberne
 | **Dashboard** | React + Vite | UI for creating/viewing/deleting stores |
 | **API** | FastAPI (Python) | REST API, store CRUD, background orchestration |
 | **Orchestrator** | Python + kubernetes-client + Helm CLI | Creates namespaces, installs Helm charts, manages lifecycle |
-| **WooCommerce Chart** | Helm | WordPress + MySQL + WP-CLI setup job + Ingress |
-| **MedusaJS Chart** | Helm | Medusa + PostgreSQL + Redis + Ingress |
+| **WooCommerce Chart** | Helm | WordPress + WooCommerce + MySQL + WP-CLI setup job + Ingress |
 | **Platform Chart** | Helm | Deploys the dashboard + API onto K8s |
 
 ---
@@ -269,13 +270,10 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 │   └── nginx.conf
 ├── helm/
 │   ├── platform/              # Platform chart (API + Dashboard)
-│   ├── woocommerce/           # WooCommerce store chart
-│   │   ├── values.yaml
-│   │   ├── values-local.yaml
-│   │   ├── values-prod.yaml
-│   │   └── templates/
-│   └── medusajs/              # MedusaJS store chart (architecture-ready)
+│   └── woocommerce/           # WooCommerce store chart
 │       ├── values.yaml
+│       ├── values-local.yaml
+│       ├── values-prod.yaml
 │       └── templates/
 ├── scripts/
 │   ├── setup-local.sh         # Kind cluster setup
@@ -302,7 +300,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 ```json
 {
   "name": "my-shop",
-  "store_type": "woocommerce"  // or "medusajs"
+  "store_type": "woocommerce"
 }
 ```
 
@@ -330,7 +328,7 @@ helm history my-store --namespace store-my-store
 - **[System Design & Tradeoffs](Docs/SYSTEM_DESIGN.md)** — Architecture decisions, security posture, production considerations
 - **[Contributing Guide](CONTRIBUTING.md)** — Development setup and contribution guidelines
 - **[API Reference](#api-reference)** — REST API endpoints
-- **[Helm Charts](#project-structure)** — WooCommerce and MedusaJS chart structure
+- **[Helm Charts](#project-structure)** — WooCommerce chart structure
 
 ---
 
@@ -359,13 +357,14 @@ git checkout -b feature/my-feature
 
 - [ ] Add comprehensive test coverage (pytest + Jest)
 - [ ] Implement store update/upgrade functionality
-- [ ] Complete MedusaJS store type implementation
 - [ ] Add Prometheus metrics and Grafana dashboards
 - [ ] Support custom Helm values per store
 - [ ] Implement store backup/restore
 - [ ] Add webhook notifications (Slack/Discord)
 - [ ] CI/CD pipeline with GitHub Actions
 - [ ] Multi-cluster support
+
+**Note:** Architecture supports adding MedusaJS or other store types — current implementation focuses on WooCommerce as per assessment requirements.
 
 ---
 
