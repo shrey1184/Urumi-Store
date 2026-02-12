@@ -446,7 +446,52 @@ code {
   color: var(--text-muted);
 }
 
-/* ─── Store Type Info (Fixed Display) ─── */
+/* ─── Store Type Selection ─── */
+.store-types-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.store-type-card {
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.store-type-card:hover {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.store-type-card.selected {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.store-type-card div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.store-type-card strong {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.store-type-card span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ─── Store Type Info (Legacy/Readonly Display) ─── */
 .store-type-info {
   border: 2px solid var(--primary);
   border-radius: var(--radius-sm);

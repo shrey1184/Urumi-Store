@@ -1,0 +1,18 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.storeName }}-redis
+  labels:
+    {{- include "medusa.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: redis
+      name: redis
+  selector:
+    {{- include "medusa.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

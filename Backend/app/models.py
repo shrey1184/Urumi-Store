@@ -15,6 +15,7 @@ from app.database import Base
 
 class StoreType(enum.StrEnum):
     WOOCOMMERCE = "woocommerce"
+    MEDUSA = "medusa"
 
 
 class StoreStatus(enum.StrEnum):

@@ -1,0 +1,47 @@
+# values-local.yaml — overrides for local Kind/k3d/Minikube
+ingress:
+  className: "nginx"
+  annotations: {}
+  tls:
+    - secretName: local-store-tls
+      hosts:
+        - "{{ .storeName }}.local.store.dev"
+
+postgres:
+  storage:
+    size: 2Gi
+    storageClass: "standard"  # Kind default
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+medusa:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+storefront:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

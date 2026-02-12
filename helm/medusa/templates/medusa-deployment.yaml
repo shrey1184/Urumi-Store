@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.storeName }}-medusa
+  labels:
+    {{- include "medusa.labels" . | nindent 4 }}
+    app.kubernetes.io/component: medusa
+spec:
+  replicas: {{ .Values.medusa.replicas }}
+  selector:
+    matchLabels:
+      {{- include "medusa.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: medusa
+  template:
+    metadata:
+      labels:
+        {{- include "medusa.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: medusa
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for PostgreSQL at {{ .Values.storeName }}-postgres:5432..."
+              until nc -z {{ .Values.storeName }}-postgres 5432; do
+                echo "PostgreSQL not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "PostgreSQL is ready!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        {{- if .Values.redis.enabled }}
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Redis at {{ .Values.storeName }}-redis:6379..."
+              until nc -z {{ .Values.storeName }}-redis 6379; do
+                echo "Redis not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "Redis is ready!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        {{- end }}
+      containers:
+        - name: medusa
+          image: {{ .Values.medusa.image }}
+          imagePullPolicy: {{ .Values.medusa.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              # Create a simple demo Medusa-like API server
+              cat > /tmp/server.js << 'EOF'
+              const http = require('http');
+              const port = process.env.PORT || 9000;
+              
+              const server = http.createServer((req, res) => {
+                res.setHeader('Content-Type', 'application/json');
+                
+                if (req.url === '/health') {
+                  res.writeHead(200);
+                  res.end(JSON.stringify({ status: 'ok' }));
+                } else if (req.url === '/admin') {
+                  res.writeHead(200);
+                  res.end(JSON.stringify({ 
+                    message: 'MedusaJS Admin Portal (Demo)',
+                    email: process.env.ADMIN_EMAIL,
+                    note: 'This is a demo store. Full MedusaJS implementation in progress.'
+                  }));
+                } else if (req.url === '/store') {
+                  res.writeHead(200);
+                  res.end(JSON.stringify({ 
+                    message: 'MedusaJS Store API (Demo)',
+                    products: [],
+                    note: 'This is a demo store. Full MedusaJS implementation in progress.'
+                  }));
+                } else {
+                  res.writeHead(200);
+                  res.end(JSON.stringify({ 
+                    message: 'MedusaJS Store Running',
+                    version: '2.0.0-demo',
+                    database: process.env.DATABASE_URL ? 'connected' : 'not configured',
+                    redis: process.env.REDIS_URL ? 'connected' : 'not configured'
+                  }));
+                }
+              });
+              
+              server.listen(port, '0.0.0.0', function() {
+                console.log('MedusaJS demo server running on port ' + port);
+              });
+              EOF
+              
+              node /tmp/server.js
+          ports:
+            - containerPort: 9000
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Values.storeName }}-medusa-secret
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "9000"
+          resources:
+            {{- toYaml .Values.medusa.resources | nindent 12 }}
+          volumeMounts:
+            - name: medusa-data
+              mountPath: /app
+          {{- with .Values.medusa.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.medusa.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: medusa-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.storeName }}-medusa-pvc

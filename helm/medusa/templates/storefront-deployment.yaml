@@ -1,0 +1,74 @@
+{{- if .Values.storefront.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.storeName }}-storefront
+  labels:
+    {{- include "medusa.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storefront
+spec:
+  replicas: {{ .Values.storefront.replicas }}
+  selector:
+    matchLabels:
+      {{- include "medusa.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: storefront
+  template:
+    metadata:
+      labels:
+        {{- include "medusa.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: storefront
+    spec:
+      initContainers:
+        - name: wait-for-medusa
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Medusa backend at {{ .Values.storeName }}-medusa:9000..."
+              until nc -z {{ .Values.storeName }}-medusa 9000; do
+                echo "Medusa not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "Medusa backend is ready!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: storefront
+          image: {{ .Values.storefront.image }}
+          imagePullPolicy: {{ .Values.storefront.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              # Clone Medusa starter storefront if not exists
+              if [ ! -d "/app/storefront" ]; then
+                apk add --no-cache git
+                git clone https://github.com/medusajs/nextjs-starter-medusa.git /app/storefront
+                cd /app/storefront
+                npm install
+              fi
+              cd /app/storefront
+              npm run dev -- -p 8000 -H 0.0.0.0
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Values.storeName }}-storefront-secret
+          resources:
+            {{- toYaml .Values.storefront.resources | nindent 12 }}
+          {{- with .Values.storefront.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storefront.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

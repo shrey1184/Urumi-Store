@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.storeName }}-ingress
+  labels:
+    {{- include "medusa.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ include "medusa.host" . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                {{- if .Values.storefront.enabled }}
+                name: {{ .Values.storeName }}-storefront
+                port:
+                  number: 8000
+                {{- else }}
+                name: {{ .Values.storeName }}-medusa
+                port:
+                  number: 9000
+                {{- end }}
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.storeName }}-medusa
+                port:
+                  number: 9000
+          - path: /store
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.storeName }}-medusa
+                port:
+                  number: 9000
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - secretName: {{ .secretName }}
+      hosts:
+        {{- range .hosts }}
+        - {{ . }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Guardrails
     MAX_STORES: int = int(os.getenv("MAX_STORES", "10"))
-    PROVISION_TIMEOUT_SECONDS: int = int(os.getenv("PROVISION_TIMEOUT_SECONDS", "300"))
+    PROVISION_TIMEOUT_SECONDS: int = int(os.getenv("PROVISION_TIMEOUT_SECONDS", "600"))
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "10"))
 
     # Store namespace prefix

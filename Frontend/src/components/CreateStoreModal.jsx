@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createStore } from "../api";
 import toast from "react-hot-toast";
-import { Plus, X, ShoppingBag } from "lucide-react";
+import { Plus, X, ShoppingBag, Zap } from "lucide-react";
 
 const STORE_TYPES = [
   {
@@ -10,11 +10,17 @@ const STORE_TYPES = [
     desc: "WordPress + WooCommerce — full-featured ecommerce",
     icon: ShoppingBag,
   },
+  {
+    value: "medusa",
+    label: "MedusaJS",
+    desc: "Modern headless commerce — Node.js + PostgreSQL + Next.js",
+    icon: Zap,
+  },
 ];
 
 export default function CreateStoreModal({ open, onClose, onCreated }) {
   const [name, setName] = useState("");
-  const [storeType] = useState("woocommerce"); // Fixed to WooCommerce only
+  const [storeType, setStoreType] = useState("woocommerce");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -87,12 +93,25 @@ export default function CreateStoreModal({ open, onClose, onCreated }) {
 
           <div className="form-group">
             <label>Store Engine</label>
-            <div className="store-type-info">
-              <ShoppingBag size={24} />
-              <div>
-                <strong>WooCommerce</strong>
-                <span>WordPress + WooCommerce — full-featured ecommerce</span>
-              </div>
+            <div className="store-types-grid">
+              {STORE_TYPES.map((type) => {
+                const Icon = type.icon;
+                return (
+                  <div
+                    key={type.value}
+                    className={`store-type-card ${
+                      storeType === type.value ? "selected" : ""
+                    }`}
+                    onClick={() => setStoreType(type.value)}
+                  >
+                    <Icon size={24} />
+                    <div>
+                      <strong>{type.label}</strong>
+                      <span>{type.desc}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

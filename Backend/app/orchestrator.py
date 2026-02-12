@@ -40,7 +40,11 @@ def _get_store_url(store_name: str) -> str:
 
 
 def _get_admin_url(store_name: str, store_type: StoreType) -> str:
-    return f"https://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
+    if store_type == StoreType.WOOCOMMERCE:
+        return f"https://{store_name}.{settings.BASE_DOMAIN}/wp-admin"
+    elif store_type == StoreType.MEDUSA:
+        return f"https://{store_name}.{settings.BASE_DOMAIN}/admin"
+    return f"https://{store_name}.{settings.BASE_DOMAIN}"
 
 
 class StoreOrchestrator:
@@ -108,7 +112,11 @@ class StoreOrchestrator:
         if not success:
             raise RuntimeError(f"Helm install failed: {output}")
 
-        # Step 4: Update store record with URLs
+        # Step 4: Add /etc/hosts entry for local DNS (non-cluster mode)
+        if not settings.IN_CLUSTER:
+            self._add_hosts_entry(store.name)
+
+        # Step 5: Update store record with URLs
         store_url = _get_store_url(store.name)
         admin_url = _get_admin_url(store.name, store.store_type)
 
@@ -141,6 +149,10 @@ class StoreOrchestrator:
             logger.info("[%s] Deleting namespace %s", store.name, store.namespace)
             k8s_client.delete_namespace(store.namespace)
 
+            # Step 2.5: Remove /etc/hosts entry (non-cluster mode)
+            if not settings.IN_CLUSTER:
+                self._remove_hosts_entry(store.name)
+
             # Step 3: Remove from DB
             async with async_session() as session:
                 result = await session.execute(select(Store).where(Store.id == store.id))
@@ -160,7 +172,12 @@ class StoreOrchestrator:
     def _get_chart_path(self, store_type: StoreType) -> str:
         """Resolve the Helm chart path for a store type."""
         base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "helm"))
-        return os.path.join(base, "woocommerce")
+        if store_type == StoreType.WOOCOMMERCE:
+            return os.path.join(base, "woocommerce")
+        elif store_type == StoreType.MEDUSA:
+            return os.path.join(base, "medusa")
+        else:
+            raise ValueError(f"Unsupported store type: {store_type}")
 
     def _create_tls_secret(self, namespace: str):
         """Copy the TLS certificate to the namespace."""
@@ -179,22 +196,78 @@ class StoreOrchestrator:
 
         k8s_client.create_tls_secret(namespace, "local-store-tls", cert_data, key_data)
 
+    def _add_hosts_entry(self, store_name: str):
+        """Add /etc/hosts entry for local DNS resolution."""
+        hostname = f"{store_name}.{settings.BASE_DOMAIN}"
+        entry = f"127.0.0.1 {hostname}"
+        try:
+            with open("/etc/hosts", "r") as f:
+                contents = f.read()
+            if hostname in contents:
+                logger.info("[%s] /etc/hosts entry already exists", store_name)
+                return
+            with open("/etc/hosts", "a") as f:
+                f.write(f"\n{entry}\n")
+            logger.info("[%s] Added /etc/hosts entry: %s", store_name, entry)
+        except PermissionError:
+            logger.warning(
+                "[%s] Cannot write /etc/hosts (no permission). Add manually: %s",
+                store_name, entry,
+            )
+        except Exception as e:
+            logger.warning("[%s] Failed to update /etc/hosts: %s", store_name, e)
+
+    def _remove_hosts_entry(self, store_name: str):
+        """Remove /etc/hosts entry on store deletion."""
+        hostname = f"{store_name}.{settings.BASE_DOMAIN}"
+        try:
+            with open("/etc/hosts", "r") as f:
+                lines = f.readlines()
+            new_lines = [l for l in lines if hostname not in l]
+            with open("/etc/hosts", "w") as f:
+                f.writelines(new_lines)
+            logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
+        except PermissionError:
+            logger.warning(
+                "[%s] Cannot write /etc/hosts (no permission). Remove manually: %s",
+                store_name, hostname,
+            )
+        except Exception as e:
+            logger.warning("[%s] Failed to clean /etc/hosts: %s", store_name, e)
+
     def _build_helm_values(self, store: Store, wp_password: str, db_password: str) -> dict:
         """Build Helm --set values for store provisioning."""
-        values = {
+        base_values = {
             "storeName": store.name,
             "baseDomain": settings.BASE_DOMAIN,
             "ingress.className": settings.INGRESS_CLASS,
             "ingress.host": f"{store.name}.{settings.BASE_DOMAIN}",
-            "wordpress.adminUser": "admin",
-            "wordpress.adminPassword": wp_password,
-            "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
-            "mysql.rootPassword": db_password,
-            "mysql.database": "wordpress",
-            "mysql.user": "wordpress",
-            "mysql.password": db_password,
         }
-        return values
+        
+        if store.store_type == StoreType.WOOCOMMERCE:
+            base_values.update({
+                "wordpress.adminUser": "admin",
+                "wordpress.adminPassword": wp_password,
+                "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+                "mysql.rootPassword": db_password,
+                "mysql.database": "wordpress",
+                "mysql.user": "wordpress",
+                "mysql.password": db_password,
+            })
+        elif store.store_type == StoreType.MEDUSA:
+            jwt_secret = _generate_password(32)
+            cookie_secret = _generate_password(32)
+            base_values.update({
+                "medusa.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+                "medusa.adminPassword": wp_password,
+                "medusa.jwtSecret": jwt_secret,
+                "medusa.cookieSecret": cookie_secret,
+                "postgres.database": "medusa",
+                "postgres.user": "medusa",
+                "postgres.password": db_password,
+            })
+        
+        return base_values
 
     async def _update_store_status(
         self,
