@@ -174,7 +174,9 @@ class KubernetesClient:
             else:
                 raise
 
-    def create_tls_secret(self, namespace: str, secret_name: str, cert_data: bytes, key_data: bytes):
+    def create_tls_secret(
+        self, namespace: str, secret_name: str, cert_data: bytes, key_data: bytes
+    ):
         """Create a TLS secret in the namespace."""
         secret = client.V1Secret(
             metadata=client.V1ObjectMeta(name=secret_name),

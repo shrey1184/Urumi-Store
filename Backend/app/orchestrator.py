@@ -167,16 +167,16 @@ class StoreOrchestrator:
         # Read the cert and key from /tmp (created during setup)
         cert_path = "/tmp/tls.crt"
         key_path = "/tmp/tls.key"
-        
+
         if not os.path.exists(cert_path) or not os.path.exists(key_path):
             logger.warning("TLS cert/key not found, skipping HTTPS setup")
             return
-            
+
         with open(cert_path, "rb") as f:
             cert_data = base64.b64encode(f.read())
         with open(key_path, "rb") as f:
             key_data = base64.b64encode(f.read())
-        
+
         k8s_client.create_tls_secret(namespace, "local-store-tls", cert_data, key_data)
 
     def _build_helm_values(self, store: Store, wp_password: str, db_password: str) -> dict:
