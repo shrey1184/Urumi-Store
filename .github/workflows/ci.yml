@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  backend-lint:
+    name: Backend Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd Backend
+          pip install -r requirements.txt
+          pip install ruff black
+      
+      - name: Run ruff
+        run: |
+          cd Backend
+          ruff check app/
+      
+      - name: Run black
+        run: |
+          cd Backend
+          black --check app/
+
+  frontend-lint:
+    name: Frontend Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: |
+          cd Frontend
+          npm ci
+      
+      - name: Run ESLint
+        run: |
+          cd Frontend
+          npm run lint
+
+  helm-lint:
+    name: Helm Chart Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: '3.14.0'
+      
+      - name: Lint WooCommerce chart
+        run: helm lint helm/woocommerce/
+      
+      - name: Lint MedusaJS chart
+        run: helm lint helm/medusajs/
+      
+      - name: Lint Platform chart
+        run: helm lint helm/platform/
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build Backend image
+        run: |
+          cd Backend
+          docker build -t urumi-backend:test .
+      
+      - name: Build Frontend image
+        run: |
+          cd Frontend
+          docker build -t urumi-frontend:test .

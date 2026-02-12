@@ -1,0 +1,32 @@
+# values-prod.yaml — overrides for production VPS (k3s)
+baseDomain: "your-domain.com"
+
+ingress:
+  className: "traefik"  # k3s default
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  tls:
+    - secretName: "{{ .Values.storeName }}-tls"
+      hosts:
+        - "{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+
+mysql:
+  storage:
+    size: 10Gi
+    storageClass: "local-path"  # k3s default
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+wordpress:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi

@@ -1,0 +1,25 @@
+# values-local.yaml — overrides for local Kind/k3d/Minikube
+ingress:
+  className: "nginx"
+  annotations: {}
+
+mysql:
+  storage:
+    size: 2Gi
+    storageClass: "standard"  # Kind default
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+wordpress:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

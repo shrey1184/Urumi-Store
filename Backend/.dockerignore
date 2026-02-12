@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+env/
+ENV/
+*.db
+*.sqlite3
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.npm
+*.log
+
+# Environment
+.env
+.env.local
+!.env.example
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation
+README.md
+CONTRIBUTING.md
+LICENSE
+Docs/
+
+# CI/CD
+.github/
+
+# Scripts (not needed in container)
+scripts/
+
+# Kubernetes manifests
+helm/
+*.yaml
+*.yml
+kubeconfig
+*.kubeconfig
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+tests/
+*.test.js
+*.spec.js

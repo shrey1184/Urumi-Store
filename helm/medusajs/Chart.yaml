@@ -1,0 +1,6 @@
+apiVersion: v2
+name: medusajs
+description: MedusaJS headless commerce store chart (architecture-ready stub)
+type: application
+version: 1.0.0
+appVersion: "2.0"

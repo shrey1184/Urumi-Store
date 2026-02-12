@@ -1,0 +1,89 @@
+# ─── Store Identity ───
+storeName: "my-store"
+baseDomain: "local.store.dev"
+
+# ─── Ingress ───
+ingress:
+  enabled: true
+  className: "nginx"
+  host: ""  # auto-computed: {{ .Values.storeName }}.{{ .Values.baseDomain }}
+  annotations: {}
+  tls: []
+
+# ─── WordPress / WooCommerce ───
+wordpress:
+  image: wordpress:6.4-apache
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  adminUser: admin
+  adminPassword: ""  # set via --set at install time (never hardcoded)
+  adminEmail: "admin@store.local"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  readinessProbe:
+    httpGet:
+      path: /wp-login.php
+      port: 80
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+  livenessProbe:
+    httpGet:
+      path: /wp-login.php
+      port: 80
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+
+# ─── MySQL ───
+mysql:
+  image: mysql:8.0
+  imagePullPolicy: IfNotPresent
+  rootPassword: ""  # set via --set
+  database: wordpress
+  user: wordpress
+  password: ""  # set via --set
+  storage:
+    size: 5Gi
+    storageClass: ""  # use default; override in values-prod.yaml
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  readinessProbe:
+    exec:
+      command:
+        - mysqladmin
+        - ping
+        - "-h"
+        - localhost
+    initialDelaySeconds: 20
+    periodSeconds: 10
+  livenessProbe:
+    exec:
+      command:
+        - mysqladmin
+        - ping
+        - "-h"
+        - localhost
+    initialDelaySeconds: 30
+    periodSeconds: 20
+
+# ─── WP-CLI Init Job ───
+wpcli:
+  image: wordpress:cli-2.9-php8.2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

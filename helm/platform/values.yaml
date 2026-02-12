@@ -1,0 +1,44 @@
+replicaCount: 1
+
+api:
+  image: store-platform-api:latest
+  imagePullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+dashboard:
+  image: store-platform-dashboard:latest
+  imagePullPolicy: IfNotPresent
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: platform.local.store.dev
+  annotations: {}
+
+config:
+  baseDomain: local.store.dev
+  ingressClass: nginx
+  maxStores: "10"
+  debug: "true"
+
+serviceAccount:
+  create: true
+  name: store-platform-sa
+
+rbac:
+  create: true

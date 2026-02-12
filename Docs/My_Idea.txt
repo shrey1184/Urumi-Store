@@ -1,0 +1,33 @@
+Build a small “store provisioning platform” that runs on local Kubernetes but is designed so the same Helm-based deployment can run in production (for example, on a VPS box running k3s) with configuration changes only.
+plan this problem's implementation for scalable system..i need system design concepts included as well wrt to kubernetes and helm so that it doesnt fail in production, 
+User flow should be:
+As a user, I should be able to:
+Open a Node Dashboard (React web app).
+
+
+View existing stores and their status.
+
+
+-Click Create New Store.
+-The system provides a functioning ecommerce store automatically.
+-I can provision multiple stores concurrently.
+-Each store can be either:
+(WooCommerce (WordPress + WooCommerce), or
+MedusaJS - i dont know what this is since i dont want to use wordpress instead i know react and stuff)
+-The dashboard shows for each store:
+-status (Provisioning / Ready / Failed)
+-store URL(s)
+-created timestamp
+-I can delete a store and all resources are cleaned up.
+
+This is mandatory requirement by client-
+Must run on local Kubernetes (Kind / k3d / Minikube).
+Must be deployable to a production-like VPS setup (k3s is fine) using the same Helm charts.
+Helm is mandatory (no Kustomize). Local vs production differences must be handled via Helm values (e.g., values-local.yaml, values-prod.yaml).
+Provisioning must be Kubernetes-native (Deployments/StatefulSets, Services, Ingress, PVCs, Secrets, Jobs/Controllers).
+Multi-store capability with isolation (namespace-per-store preferred).
+Persistent storage for the database at minimum.
+Each store exposed via HTTP using Ingress with stable URLs (document your local domain approach).
+Basic readiness/liveness checks.
+Clean teardown: deleting a store removes its resources safely.
+No hardcoded secrets in source code.

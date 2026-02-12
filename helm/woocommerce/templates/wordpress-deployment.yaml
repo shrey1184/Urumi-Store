@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.storeName }}-wordpress
+  labels:
+    {{- include "woocommerce.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
+spec:
+  replicas: {{ .Values.wordpress.replicas }}
+  selector:
+    matchLabels:
+      {{- include "woocommerce.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wordpress
+  template:
+    metadata:
+      labels:
+        {{- include "woocommerce.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wordpress
+    spec:
+      securityContext:
+        fsGroup: 33  # www-data
+      initContainers:
+        - name: wait-for-mysql
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MySQL at {{ .Values.storeName }}-mysql:3306..."
+              until nc -z {{ .Values.storeName }}-mysql 3306; do
+                echo "MySQL not ready, retrying in 3s..."
+                sleep 3
+              done
+              echo "MySQL is ready!"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      containers:
+        - name: wordpress
+          image: {{ .Values.wordpress.image }}
+          imagePullPolicy: {{ .Values.wordpress.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 80
+              name: http
+          envFrom:
+            - secretRef:
+                name: {{ .Values.storeName }}-wp-secret
+          resources:
+            {{- toYaml .Values.wordpress.resources | nindent 12 }}
+          volumeMounts:
+            - name: wp-data
+              mountPath: /var/www/html
+          {{- with .Values.wordpress.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.wordpress.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: wp-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.storeName }}-wp-pvc
