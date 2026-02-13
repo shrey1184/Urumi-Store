@@ -48,7 +48,8 @@
                          │  │                   │   Orchestrator      │               │   │
                          │  │                   │   ├─ K8s Client     │               │   │
                          │  │                   │   ├─ Helm Client    │               │   │
-                         │  │                   │   └─ SQLite DB      │               │   │
+                         │  │                   │   └─ DB (SQLite /   │               │   │
+                         │  │                   │       PostgreSQL)   │               │   │
                          │  │                   └──────────┬──────────┘               │   │
                          │  └──────────────────────────────┼─────────────────────────┘   │
                          │                                 │                              │
@@ -104,33 +105,37 @@
 
 | Aspect | Detail |
 |--------|--------|
-| **Technology** | Python 3.11+, FastAPI, SQLAlchemy (async), aiosqlite, Pydantic v2 |
+| **Technology** | Python 3.11+, FastAPI, SQLAlchemy (async), aiosqlite / asyncpg, Pydantic v2 |
 | **Serves on** | Port `8000` |
-| **Responsibilities** | REST API for store CRUD, background provisioning via `BackgroundTasks`, Kubernetes namespace/quota management, Helm chart installation, store metadata persistence, health monitoring |
+| **Responsibilities** | REST API for store CRUD, OAuth authentication (Google), background provisioning via `BackgroundTasks`, Kubernetes namespace/quota management, Helm chart installation, store metadata persistence, health monitoring |
 
 **Key files:**
 
 | File | Role |
 |------|------|
-| `main.py` | FastAPI app factory, CORS, lifespan (DB init + K8s connect) |
-| `config.py` | Pydantic `BaseSettings` — all config from env vars |
-| `database.py` | SQLAlchemy async engine + session factory |
-| `models.py` | `Store` ORM model with status enum (provisioning/ready/failed/deleting) |
+| `main.py` | FastAPI app factory, environment-aware CORS, lifespan (DB init + K8s connect + production validation) |
+| `config.py` | Pydantic `BaseSettings` — all config from env vars (DB, JWT, OAuth, SMTP, CORS, etc.) |
+| `database.py` | SQLAlchemy async engine + session factory (supports SQLite and PostgreSQL) |
+| `models.py` | `User` and `Store` ORM models with status enum (provisioning/ready/failed/deleting) |
 | `schemas.py` | Pydantic request/response schemas with validation |
-| `routes.py` | API endpoints: health, list, get, create, delete, pods |
-| `orchestrator.py` | Core lifecycle logic: namespace → quota → helm install → DNS → status update |
+| `routes.py` | API endpoints: health, list, get, create, delete, pods (all user-scoped) |
+| `auth.py` | JWT token creation/verification, OAuth client factory, `get_current_user` dependency |
+| `auth_routes.py` | OAuth login/callback endpoints, user management, CSRF state with TTL |
+| `orchestrator.py` | Core lifecycle logic: namespace → quota → helm install → DNS → status update, auto-selects production values |
 | `k8s_client.py` | Kubernetes Python client wrapper (namespace, ResourceQuota, LimitRange, TLS, pods) |
 | `helm_client.py` | Async subprocess wrapper around `helm` CLI (install, upgrade, uninstall, rollback) |
+| `email_service.py` | SMTP email delivery for store credentials (Gmail App Password) |
 
 ### 3. Helm Charts
 
 #### Platform Chart (`helm/platform/`)
 Deploys the platform itself onto Kubernetes:
-- **API Deployment** — FastAPI container with env-var configuration
+- **API Deployment** — FastAPI container with 12+ env vars (DB, JWT, OAuth, SMTP, CORS, etc.)
 - **Dashboard Deployment** — React app served by nginx
-- **Ingress** — routes `platform.local.store.dev` to the API/dashboard
+- **Ingress** — routes `platform.local.store.dev` to the API/dashboard, supports TLS via cert-manager
+- **Secrets** — `platform-secrets` K8s Secret for JWT key, Google OAuth secret, SMTP password
 - **RBAC** — ServiceAccount + ClusterRole scoped to minimum required permissions
-- **Values** — configurable replicas, images, resource limits, domain
+- **Values** — configurable replicas, images, resource limits, domain, auth, email
 
 #### WooCommerce Chart (`helm/woocommerce/`)
 Provisions a complete WordPress + WooCommerce store:
@@ -174,16 +179,18 @@ User clicks "Create Store" in Dashboard
          │
          ▼
 POST /api/v1/stores { name: "myshop", store_type: "woocommerce" }
-         │
+         │  (Authorization: Bearer <JWT>)
          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ routes.py :: create_store()                                  │
-│  1. Check MAX_STORES guardrail (429 if exceeded)            │
-│  2. Check name uniqueness (409 if duplicate — idempotent)   │
-│  3. Generate namespace: "store-myshop"                      │
-│  4. Insert Store record (status=PROVISIONING) into SQLite   │
-│  5. Return 201 immediately (non-blocking)                   │
-│  6. Enqueue background task → orchestrator.create_store()   │
+│  1. Authenticate user via JWT (401 if invalid)              │
+│  2. Check per-user MAX_STORES_PER_USER (429 if exceeded)    │
+│  3. Check name uniqueness (409 if duplicate — idempotent)   │
+│  4. Check K8s namespace not Terminating (409 if so)         │
+│  5. Generate namespace: "store-myshop"                      │
+│  6. Insert Store record (status=PROVISIONING) into DB       │
+│  7. Return 201 immediately (non-blocking)                   │
+│  8. Enqueue background task → orchestrator.create_store()   │
 └────────────────────────────┬────────────────────────────────┘
                              │ (background)
                              ▼
@@ -198,14 +205,19 @@ POST /api/v1/stores { name: "myshop", store_type: "woocommerce" }
 │          Apply LimitRange (default container limits)        │
 │          ↳ Idempotent: skips if already exists (409)        │
 │                                                              │
-│  Step 2.5: Create TLS secret for HTTPS (if certs exist)    │
+│  Step 2.5: TLS handling                                     │
+│          ↳ Local: copy self-signed cert to namespace        │
+│          ↳ Production: skip (cert-manager handles TLS)      │
 │                                                              │
 │  Step 3: Helm install store chart                           │
+│          ↳ Auto-selects values-prod.yaml when IN_CLUSTER    │
 │          ↳ helm install myshop helm/woocommerce/            │
+│             -f values-prod.yaml (if in-cluster)             │
 │             --namespace store-myshop --wait                 │
 │             --set wordpress.adminPassword=<generated>       │
 │             --set mysql.rootPassword=<generated>            │
 │             --set ingress.host=myshop.local.store.dev       │
+│          ↳ Adds cert-manager annotation when in-cluster     │
 │          ↳ Waits until all pods are Ready (or timeout)      │
 │                                                              │
 │  Step 4: Add /etc/hosts entry (local mode only)             │
@@ -213,6 +225,7 @@ POST /api/v1/stores { name: "myshop", store_type: "woocommerce" }
 │                                                              │
 │  Step 5: Update DB → status=READY, store_url, admin_url    │
 │          Store admin credentials in metadata_json           │
+│          Send credentials email (if SMTP configured)        │
 │                                                              │
 │  On failure: status=FAILED, error_message saved to DB       │
 └─────────────────────────────────────────────────────────────┘
@@ -225,15 +238,16 @@ User clicks "Delete" on store card
          │
          ▼
 DELETE /api/v1/stores/{store_id}
-         │
+         │  (Authorization: Bearer <JWT>)
          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ routes.py :: delete_store()                                   │
-│  1. Verify store exists (404 if not)                         │
-│  2. Check not already deleting (409 if so)                   │
-│  3. Set status = DELETING                                    │
-│  4. Return 200 immediately                                   │
-│  5. Enqueue background task → orchestrator.delete_store()    │
+│  1. Authenticate user via JWT (401 if invalid)               │
+│  2. Verify store exists AND belongs to user (404 if not)     │
+│  3. Check not already deleting (409 if so)                   │
+│  4. Set status = DELETING                                    │
+│  5. Return 200 immediately                                   │
+│  6. Enqueue background task → orchestrator.delete_store()    │
 └────────────────────────────┬────────────────────────────────┘
                              │ (background)
                              ▼
@@ -244,12 +258,13 @@ DELETE /api/v1/stores/{store_id}
 │          ↳ Non-fatal warning if release not found            │
 │                                                               │
 │  Step 2: Delete Kubernetes namespace (Foreground propagation)│
+│          ↳ Runs via asyncio.to_thread() (non-blocking)      │
 │          ↳ K8s garbage-collects ALL resources in namespace   │
 │          ↳ This is the safety net — nothing survives         │
 │                                                               │
 │  Step 2.5: Remove /etc/hosts entry (local mode only)         │
 │                                                               │
-│  Step 3: Delete Store record from SQLite                     │
+│  Step 3: Delete Store record from database                   │
 │          ↳ DB record removed only AFTER successful cleanup   │
 │                                                               │
 │  On failure: status=FAILED with error message                │
@@ -392,6 +407,44 @@ async def create_store(self, store: Store):
 
 ## Security Considerations
 
+### Authentication & Authorization
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Auth Flow                                                    │
+│                                                              │
+│  1. User clicks "Login with Google" → OAuth redirect        │
+│     ↳ CSRF state stored in-memory with 10-min TTL           │
+│     ↳ Capped at 1000 entries to prevent memory leaks        │
+│                                                              │
+│  2. Google callback → exchange code for token               │
+│     ↳ Verify CSRF state (reject if expired or missing)      │
+│     ↳ Fetch user info from Google                           │
+│     ↳ Create or update User record in DB                    │
+│                                                              │
+│  3. Issue JWT access token (7-day expiry)                   │
+│     ↳ Contains user_id, email, issued_at                    │
+│     ↳ Signed with JWT_SECRET_KEY (HS256)                    │
+│                                                              │
+│  4. All API requests require Authorization: Bearer <JWT>    │
+│     ↳ Stores are scoped to the authenticated user           │
+│     ↳ Users can only see/delete their own stores            │
+│                                                              │
+│  Production guard: API crashes on startup if JWT_SECRET_KEY │
+│  is still the insecure default when IN_CLUSTER=true         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### CORS Policy
+
+| Environment | `allow_origins` | `allow_credentials` |
+|-------------|----------------|---------------------|
+| Local dev | `["*"]` | `False` (spec requirement) |
+| Production (default) | `[FRONTEND_URL]` | `True` |
+| Production (explicit) | `CORS_ORIGINS` env var (comma-separated) | `True` |
+
+> **Note:** The browser CORS spec forbids `allow_origins=["*"]` with `allow_credentials=True`. The platform dynamically sets `credentials=False` when using wildcard origins.
+
 ### Secret Management
 
 ```
@@ -457,10 +510,14 @@ All environment differences are handled via **Helm values files** and **environm
 | **Ingress Controller** | NGINX (Kind-specific) | Traefik (k3s built-in) |
 | **Ingress Class** | `nginx` | `traefik` |
 | **Domain** | `local.store.dev` + `/etc/hosts` | Real domain with DNS A records |
-| **TLS** | Self-signed (optional) | cert-manager + Let's Encrypt |
+| **TLS** | Self-signed cert copied to namespace | cert-manager + Let's Encrypt (auto via annotation) |
+| **TLS in Ingress** | Manual `tls:` block in values | Auto-generated when `cert-manager.io/cluster-issuer` annotation present |
 | **Storage Class** | `standard` (Kind default) | `local-path` (k3s default) |
-| **Database (platform)** | SQLite (file-based) | PostgreSQL (swap via `DATABASE_URL`) |
-| **Secrets** | Generated at runtime, stored in K8s | External secret manager (Vault, AWS SM) |
+| **Database (platform)** | SQLite (`aiosqlite`) | PostgreSQL (`asyncpg`) — swap via `DATABASE_URL` |
+| **CORS** | `allow_origins=["*"]`, `credentials=False` | `allow_origins=[FRONTEND_URL]`, `credentials=True` |
+| **Helm Values** | `values.yaml` (base defaults) | Auto-selects `values-prod.yaml` when `IN_CLUSTER=true` |
+| **JWT Secret** | Default (dev-only) | Must be set — app **crashes on startup** if default is used |
+| **Secrets** | Generated at runtime, stored in K8s | `platform-secrets` K8s Secret (JWT, OAuth, SMTP) |
 | **Container Images** | Built locally, loaded into Kind | Container registry (Docker Hub, ECR, GHCR) |
 | **API Replicas** | 1 | Multiple (stateless, behind LoadBalancer) |
 | **Resource Limits** | Minimal (development) | Production limits in `values-prod.yaml` |
@@ -468,19 +525,40 @@ All environment differences are handled via **Helm values files** and **environm
 
 ### How it works
 
-```bash
-# Local deployment
-helm install myshop helm/woocommerce/ \
-  -f helm/woocommerce/values.yaml \           # Base values
-  --namespace store-myshop
+The orchestrator auto-detects the environment via `IN_CLUSTER` and selects the right values file:
 
-# Production deployment
+```bash
+# Local deployment (orchestrator uses values.yaml automatically)
 helm install myshop helm/woocommerce/ \
-  -f helm/woocommerce/values-prod.yaml \      # Production overrides
+  --namespace store-myshop \
+  --set wordpress.adminPassword=<generated> \
+  --set mysql.rootPassword=<generated> \
+  --set ingress.host=myshop.local.store.dev
+
+# Production deployment (orchestrator uses values-prod.yaml automatically)
+helm install myshop helm/woocommerce/ \
+  -f helm/woocommerce/values-prod.yaml \
   --namespace store-myshop \
   --set baseDomain=yourdomain.com \
-  --set wordpress.adminPassword=<secure> \
-  --set mysql.rootPassword=<secure>
+  --set wordpress.adminPassword=<generated> \
+  --set mysql.rootPassword=<generated> \
+  --set ingress.annotations.cert-manager\.io/cluster-issuer=letsencrypt-prod
+```
+
+The ingress templates auto-generate a `tls:` block when a `cert-manager.io/cluster-issuer` annotation is present but `ingress.tls` is empty — no need to hardcode TLS host/secret names in values files.
+
+### Platform deployment
+
+```bash
+helm install platform helm/platform/ \
+  --namespace store-platform --create-namespace \
+  --set config.baseDomain=yourdomain.com \
+  --set config.ingressClass=traefik \
+  --set config.databaseUrl="postgresql+asyncpg://user:pass@host/db" \
+  --set config.frontendUrl="https://platform.yourdomain.com" \
+  --set secrets.jwtSecretKey="$(openssl rand -hex 32)" \
+  --set ingress.className=traefik \
+  --set ingress.host=platform.yourdomain.com
 ```
 
 ---
@@ -499,7 +577,7 @@ helm install myshop helm/woocommerce/ \
 | **Store PostgreSQL** | ❌ No | ⚠️ Complex | Use managed DB or Patroni for HA |
 | **Store Redis** | Depends | ⚠️ Limited | Single instance sufficient; Sentinel for HA |
 
-> \* API is stateless per-request, but SQLite doesn't support concurrent writes — switch to PostgreSQL for multi-replica.
+> \* API is stateless per-request. SQLite doesn't support concurrent writes — set `DATABASE_URL` to PostgreSQL (`postgresql+asyncpg://...`) for multi-replica. OAuth state is in-memory, so multi-replica requires Redis for shared state (future enhancement).
 
 ### Current Bottleneck & Future Path
 
@@ -541,7 +619,7 @@ spec:
 
 | Mechanism | Implementation | Location |
 |-----------|---------------|----------|
-| **Max store limit** | `MAX_STORES` env var (default: 10) | `routes.py` — checked before creation |
+| **Per-user store limit** | `MAX_STORES_PER_USER` env var (default: 5) | `routes.py` — checked before creation |
 | **Name validation** | Regex: `^[a-z0-9][a-z0-9\-]*[a-z0-9]$` | `schemas.py` — Pydantic validator |
 | **Duplicate prevention** | Unique constraint on `store.name` | `models.py` + `routes.py` (409 Conflict) |
 | **Resource caps** | ResourceQuota per namespace | `k8s_client.py` — applied during provisioning |
@@ -598,7 +676,7 @@ spec:
 | **Backend framework** | FastAPI | Async-native, automatic OpenAPI docs, Pydantic validation, `BackgroundTasks` for async provisioning | Django (heavier), Flask (no native async) |
 | **Provisioning engine** | Helm CLI (subprocess) | Full Helm power (templating, hooks, rollback, history) without reimplementation | Kubernetes Python client only (no templating), Pulumi (overhead) |
 | **K8s interaction** | Python kubernetes-client | Direct API for namespace/quota ops that don't need Helm templating | Helm only (overkill for simple CRUD), kubectl subprocess (fragile) |
-| **Metadata DB** | SQLite (aiosqlite) | Zero-dependency, file-based, async-compatible, sufficient for single-node | PostgreSQL (needed for multi-replica API) |
+| **Metadata DB** | SQLite (aiosqlite) / PostgreSQL (asyncpg) | SQLite for local dev (zero-dependency), PostgreSQL for production (swap via `DATABASE_URL`) | MySQL (no native async), MongoDB (overkill) |
 | **Frontend** | React + Vite | Fast HMR, modern ecosystem, lightweight | Next.js (SSR overkill for SPA), Vue (less ecosystem) |
 | **Store isolation** | Namespace-per-store | Simple, native K8s, garbage-collection on delete | vCluster (complex), separate clusters (expensive) |
 | **Ingress** | NGINX (local) / Traefik (prod) | NGINX for Kind compatibility, Traefik for k3s built-in | Ambassador, Istio (too complex for this use case) |
@@ -638,4 +716,4 @@ helm rollback myshop 2 --namespace store-myshop
 
 ---
 
-*Last updated: February 2026*
+*Last updated: 13 February 2026*

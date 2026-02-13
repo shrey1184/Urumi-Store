@@ -102,11 +102,20 @@ class StoreOrchestrator:
 
         helm_values = self._build_helm_values(store, wp_password, db_password)
 
+        # Use production values file when running in-cluster
+        values_file = None
+        if settings.IN_CLUSTER:
+            prod_values = os.path.join(chart_path, "values-prod.yaml")
+            if os.path.exists(prod_values):
+                values_file = prod_values
+                logger.info("[%s] Using production values: %s", store.name, prod_values)
+
         success, output = await helm_client.install(
             release_name=store.name,
             chart_path=chart_path,
             namespace=namespace,
             values=helm_values,
+            values_file=values_file,
             timeout=f"{settings.PROVISION_TIMEOUT_SECONDS}s",
             wait=True,
         )
@@ -162,10 +171,11 @@ class StoreOrchestrator:
             # Step 2: Delete namespace and WAIT for it to fully disappear
             # This is critical — K8s namespace deletion is async and can take time.
             # We must wait so the store name can be reused immediately.
+            # Run in a thread to avoid blocking the async event loop during the polling wait.
             logger.info(
                 "[%s] Deleting namespace %s (waiting for full cleanup)", store.name, store.namespace
             )
-            k8s_client.delete_namespace(store.namespace, wait=True)
+            await asyncio.to_thread(k8s_client.delete_namespace, store.namespace, True)
 
             # Step 2.5: Remove /etc/hosts entry (non-cluster mode)
             if not settings.IN_CLUSTER:
@@ -189,7 +199,7 @@ class StoreOrchestrator:
 
     def _get_chart_path(self, store_type: StoreType) -> str:
         """Resolve the Helm chart path for a store type."""
-        base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "helm"))
+        base = os.path.abspath(settings.STORE_CHART_PATH)
         if store_type == StoreType.WOOCOMMERCE:
             return os.path.join(base, "woocommerce")
         elif store_type == StoreType.MEDUSA:
@@ -198,8 +208,16 @@ class StoreOrchestrator:
             raise ValueError(f"Unsupported store type: {store_type}")
 
     def _create_tls_secret(self, namespace: str):
-        """Copy the TLS certificate to the namespace."""
-        # Read the cert and key from /tmp (created during setup)
+        """Copy the TLS certificate to the namespace.
+
+        In production (IN_CLUSTER), cert-manager handles TLS automatically
+        via ingress annotations, so manual cert copying is skipped.
+        """
+        if settings.IN_CLUSTER:
+            logger.info("Running in-cluster — TLS managed by cert-manager, skipping manual cert")
+            return
+
+        # Read the cert and key from /tmp (created during local setup)
         cert_path = "/tmp/tls.crt"
         key_path = "/tmp/tls.key"
 
@@ -319,6 +337,10 @@ class StoreOrchestrator:
             "ingress.className": settings.INGRESS_CLASS,
             "ingress.host": f"{store.name}.{settings.BASE_DOMAIN}",
         }
+
+        # In production, add cert-manager annotation for automatic TLS certificates
+        if settings.IN_CLUSTER:
+            base_values["ingress.annotations.cert-manager\\.io/cluster-issuer"] = "letsencrypt-prod"
 
         if store.store_type == StoreType.WOOCOMMERCE:
             base_values.update(

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     HELM_BINARY: str = os.getenv("HELM_BINARY", "helm")
     STORE_CHART_PATH: str = os.getenv(
         "STORE_CHART_PATH",
-        os.path.join(os.path.dirname(__file__), "..", "..", "helm", "store-chart"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "helm"),
     )
 
     # Ingress
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
 
     # Frontend URL for redirects
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+    # CORS — comma-separated origins (defaults to FRONTEND_URL for production safety)
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "")
 
     # SMTP / Email (Gmail App Password)
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")

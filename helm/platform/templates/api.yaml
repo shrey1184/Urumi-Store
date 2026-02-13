@@ -33,8 +33,45 @@ spec:
               value: {{ .Values.config.ingressClass | quote }}
             - name: MAX_STORES
               value: {{ .Values.config.maxStores | quote }}
+            - name: MAX_STORES_PER_USER
+              value: {{ .Values.config.maxStoresPerUser | quote }}
             - name: DEBUG
               value: {{ .Values.config.debug | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.config.databaseUrl | quote }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: jwt-secret-key
+            - name: FRONTEND_URL
+              value: {{ .Values.config.frontendUrl | quote }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.config.corsOrigins | quote }}
+            - name: OAUTH_REDIRECT_URI
+              value: {{ .Values.config.oauthRedirectUri | quote }}
+            - name: GOOGLE_CLIENT_ID
+              value: {{ .Values.config.googleClientId | quote }}
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: google-client-secret
+                  optional: true
+            - name: SMTP_HOST
+              value: {{ .Values.config.smtpHost | quote }}
+            - name: SMTP_PORT
+              value: {{ .Values.config.smtpPort | quote }}
+            - name: SMTP_USERNAME
+              value: {{ .Values.config.smtpUsername | quote }}
+            - name: SMTP_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: smtp-app-password
+                  optional: true
+            - name: STORE_CHART_PATH
+              value: "/helm"
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
           readinessProbe:

@@ -90,7 +90,11 @@ class KubernetesClient:
     def wait_for_namespace_deletion(
         self, namespace: str, timeout: int = 120, poll_interval: int = 3
     ) -> bool:
-        """Block until a namespace is fully deleted. Returns True if gone, False on timeout."""
+        """Block until a namespace is fully deleted. Returns True if gone, False on timeout.
+
+        NOTE: This uses synchronous sleep. When called from async code, wrap with
+        asyncio.to_thread() to avoid blocking the event loop.
+        """
         import time
 
         deadline = time.time() + timeout

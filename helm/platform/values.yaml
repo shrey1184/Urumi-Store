@@ -29,12 +29,28 @@ ingress:
   className: nginx
   host: platform.local.store.dev
   annotations: {}
+  tls: []
 
 config:
   baseDomain: local.store.dev
   ingressClass: nginx
   maxStores: "10"
+  maxStoresPerUser: "5"
   debug: "true"
+  databaseUrl: "sqlite+aiosqlite:///./stores.db"
+  frontendUrl: "http://platform.local.store.dev"
+  corsOrigins: ""
+  oauthRedirectUri: ""
+  googleClientId: ""
+  smtpHost: "smtp.gmail.com"
+  smtpPort: "587"
+  smtpUsername: ""
+
+# Secrets (set via --set or external secret)
+secrets:
+  jwtSecretKey: ""  # REQUIRED in production — set via --set secrets.jwtSecretKey=<value>
+  googleClientSecret: ""
+  smtpAppPassword: ""
 
 serviceAccount:
   create: true

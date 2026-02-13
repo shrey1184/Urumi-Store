@@ -20,8 +20,21 @@ from app.schemas import UserResponse
 logger = logging.getLogger(__name__)
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# State storage for OAuth CSRF protection (in-memory for now)
-_oauth_states = set()
+# State storage for OAuth CSRF protection
+# NOTE: In-memory storage works for single-replica. With multiple replicas,
+# use Redis or a database table for state storage.
+_oauth_states: dict[str, float] = {}  # state -> timestamp
+_OAUTH_STATE_TTL = 600  # 10 minutes
+_OAUTH_STATE_MAX = 1000  # prevent unbounded growth
+
+
+def _cleanup_expired_states():
+    """Remove expired OAuth states."""
+    import time
+    now = time.time()
+    expired = [s for s, ts in _oauth_states.items() if now - ts > _OAUTH_STATE_TTL]
+    for s in expired:
+        _oauth_states.pop(s, None)
 
 
 # ───────────────── OAuth Login ─────────────────
@@ -35,7 +48,12 @@ async def login(provider: str = "google"):
 
     # Generate CSRF state
     state = secrets.token_urlsafe(32)
-    _oauth_states.add(state)
+    _cleanup_expired_states()
+    if len(_oauth_states) >= _OAUTH_STATE_MAX:
+        logger.warning("OAuth state storage full (%d entries), clearing old states", len(_oauth_states))
+        _oauth_states.clear()
+    import time
+    _oauth_states[state] = time.time()
 
     # Get authorization URL
     authorization_url, _ = oauth_client.create_authorization_url(
@@ -57,9 +75,12 @@ async def oauth_callback(
     """Handle OAuth callback and create/login user."""
 
     # Verify CSRF state
-    if state not in _oauth_states:
-        raise HTTPException(status_code=400, detail="Invalid OAuth state")
-    _oauth_states.discard(state)
+    import time
+    state_ts = _oauth_states.get(state)
+    if state_ts is None or (time.time() - state_ts) > _OAUTH_STATE_TTL:
+        _oauth_states.pop(state, None)
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+    _oauth_states.pop(state, None)
 
     if provider not in ["google"]:
         raise HTTPException(status_code=400, detail="Unsupported OAuth provider")

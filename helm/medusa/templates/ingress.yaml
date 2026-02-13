@@ -60,5 +60,10 @@ spec:
         - {{ . }}
         {{- end }}
     {{- end }}
+  {{- else if index (.Values.ingress.annotations | default dict) "cert-manager.io/cluster-issuer" }}
+  tls:
+    - secretName: {{ .Values.storeName }}-tls
+      hosts:
+        - {{ include "medusa.host" . }}
   {{- end }}
 {{- end }}

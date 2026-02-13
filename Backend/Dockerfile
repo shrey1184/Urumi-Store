@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install helm CLI
-RUN apt-get update && apt-get install -y curl && \
+# Install helm CLI and PostgreSQL client lib (needed by asyncpg)
+RUN apt-get update && apt-get install -y curl libpq5 && \
     curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 

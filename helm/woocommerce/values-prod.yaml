@@ -5,10 +5,9 @@ ingress:
   className: "traefik"  # k3s default
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  tls:
-    - secretName: "{{ .Values.storeName }}-tls"
-      hosts:
-        - "{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+  # TLS is configured dynamically at install time via --set flags.
+  # The ingress template auto-constructs the host from storeName + baseDomain.
+  tls: []
 
 mysql:
   storage:
