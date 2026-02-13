@@ -131,9 +131,7 @@ class KubernetesClient:
         # If namespace is currently terminating, wait for it to fully disappear
         ns_status = self.get_namespace_status(namespace)
         if ns_status == "Terminating":
-            logger.info(
-                "Namespace %s is still terminating, waiting for cleanup...", namespace
-            )
+            logger.info("Namespace %s is still terminating, waiting for cleanup...", namespace)
             deleted = self.wait_for_namespace_deletion(namespace, timeout=120)
             if not deleted:
                 # Try to force-remove finalizers and wait a bit more
@@ -174,7 +172,9 @@ class KubernetesClient:
         try:
             self.core_v1.delete_namespace(
                 name=namespace,
-                body=client.V1DeleteOptions(propagation_policy="Background", grace_period_seconds=0),
+                body=client.V1DeleteOptions(
+                    propagation_policy="Background", grace_period_seconds=0
+                ),
             )
             logger.info("Initiated deletion of namespace %s", namespace)
         except ApiException as e:

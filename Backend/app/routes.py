@@ -50,6 +50,7 @@ async def list_stores(
     # Auto-clean stale DELETING stores older than 5 minutes
     stale_cutoff = datetime.now(UTC).replace(microsecond=0)
     from datetime import timedelta
+
     stale_cutoff = stale_cutoff - timedelta(minutes=5)
     stale_result = await db.execute(
         select(Store).where(
@@ -66,9 +67,7 @@ async def list_stores(
         await db.commit()
 
     result = await db.execute(
-        select(Store)
-        .where(Store.user_id == current_user.id)
-        .order_by(Store.created_at.desc())
+        select(Store).where(Store.user_id == current_user.id).order_by(Store.created_at.desc())
     )
     stores = result.scalars().all()
     return StoreListResponse(
@@ -153,9 +152,7 @@ async def create_store(
         )
     elif ns_status == "Active":
         # Namespace exists but no DB record — orphaned namespace, clean it up
-        logger.warning(
-            "Orphaned namespace %s found, deleting before re-creation", namespace
-        )
+        logger.warning("Orphaned namespace %s found, deleting before re-creation", namespace)
         k8s_client.delete_namespace(namespace, wait=True)
 
     # Create store record

@@ -4,7 +4,6 @@ Authentication utilities — JWT token management and OAuth integration.
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import Depends, HTTPException, status
@@ -25,14 +24,14 @@ security = HTTPBearer()
 # ──── JWT Token Management ────
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(UTC) + expires_delta
     else:
         expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+
     to_encode.update({"exp": expire, "iat": datetime.now(UTC)})
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
@@ -81,7 +80,7 @@ async def get_current_user(
     """
     token = credentials.credentials
     payload = decode_access_token(token)
-    
+
     user_id_raw = payload.get("sub")
     if user_id_raw is None:
         raise HTTPException(
@@ -95,15 +94,15 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
         )
-    
+
     # Fetch user from database
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
-    
+
     return user

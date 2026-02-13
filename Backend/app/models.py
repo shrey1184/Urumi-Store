@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, String, Text, ForeignKey, Integer
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import relationship
@@ -36,7 +36,7 @@ class User(Base):
     oauth_id = Column(String, nullable=False)  # unique ID from OAuth provider
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     last_login = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
-    
+
     # Relationships
     stores = relationship("Store", back_populates="owner", cascade="all, delete-orphan")
 
@@ -61,6 +61,6 @@ class Store(Base):
         nullable=False,
     )
     metadata_json = Column(JSON, nullable=True)  # Extra info (credentials, etc.)
-    
+
     # Relationships
     owner = relationship("User", back_populates="stores")

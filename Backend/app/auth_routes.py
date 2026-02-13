@@ -6,8 +6,7 @@ import logging
 import secrets
 from datetime import UTC, datetime
 
-from authlib.integrations.httpx_client import AsyncOAuth2Client
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,19 +30,19 @@ async def login(provider: str = "google"):
     """Initiate OAuth login flow."""
     if provider not in ["google"]:
         raise HTTPException(status_code=400, detail="Unsupported OAuth provider")
-    
+
     oauth_client = get_oauth_client(provider)
-    
+
     # Generate CSRF state
     state = secrets.token_urlsafe(32)
     _oauth_states.add(state)
-    
+
     # Get authorization URL
     authorization_url, _ = oauth_client.create_authorization_url(
         settings.GOOGLE_AUTHORIZATION_ENDPOINT,
         state=state,
     )
-    
+
     return {"authorization_url": authorization_url, "state": state}
 
 
@@ -56,50 +55,55 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
 ):
     """Handle OAuth callback and create/login user."""
-    
+
     # Verify CSRF state
     if state not in _oauth_states:
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
     _oauth_states.discard(state)
-    
+
     if provider not in ["google"]:
         raise HTTPException(status_code=400, detail="Unsupported OAuth provider")
-    
+
     oauth_client = get_oauth_client(provider)
-    
+
     try:
         # Exchange code for token
         token = await oauth_client.fetch_token(
             settings.GOOGLE_TOKEN_ENDPOINT,
             code=code,
         )
-        
+
         # Get user info using token in header
         import httpx
+
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 settings.GOOGLE_USERINFO_ENDPOINT,
-                headers={"Authorization": f"Bearer {token['access_token']}"}
+                headers={"Authorization": f"Bearer {token['access_token']}"},
             )
             resp.raise_for_status()
             user_info = resp.json()
-        
+
         logger.info(f"Received user info: {user_info}")
-        
+
         email = user_info.get("email")
         name = user_info.get("name")
         oauth_id = user_info.get("sub") or user_info.get("id")
-        
+
         if not email or not oauth_id:
-            logger.error(f"Missing email or oauth_id. Email: {email}, OAuth ID: {oauth_id}, Full info: {user_info}")
-            raise HTTPException(status_code=400, detail="Failed to retrieve user info from OAuth provider")
-        
+            logger.error(
+                f"Missing email or oauth_id. Email: {email}, OAuth ID: {oauth_id}, Full info: {user_info}"
+            )
+            raise HTTPException(
+                status_code=400, detail="Failed to retrieve user info from OAuth provider"
+            )
+
         # Find or create user
         result = await db.execute(
             select(User).where(User.email == email, User.oauth_provider == provider)
         )
         user = result.scalar_one_or_none()
-        
+
         if not user:
             # Create new user
             user = User(
@@ -115,17 +119,17 @@ async def oauth_callback(
             user.last_login = datetime.now(UTC)
             if name and not user.name:
                 user.name = name
-        
+
         await db.commit()
         await db.refresh(user)
-        
+
         # Create JWT access token (sub must be a string per JWT spec)
         access_token = create_access_token(data={"sub": str(user.id), "email": user.email})
-        
+
         # Redirect to frontend with token
         frontend_url = f"{settings.FRONTEND_URL}/auth/callback?token={access_token}"
         return RedirectResponse(url=frontend_url)
-        
+
     except Exception as e:
         logger.exception("OAuth error: %s", e)
         raise HTTPException(status_code=400, detail=f"OAuth authentication failed: {str(e)}")

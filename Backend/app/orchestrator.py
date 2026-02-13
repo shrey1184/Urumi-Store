@@ -162,7 +162,9 @@ class StoreOrchestrator:
             # Step 2: Delete namespace and WAIT for it to fully disappear
             # This is critical — K8s namespace deletion is async and can take time.
             # We must wait so the store name can be reused immediately.
-            logger.info("[%s] Deleting namespace %s (waiting for full cleanup)", store.name, store.namespace)
+            logger.info(
+                "[%s] Deleting namespace %s (waiting for full cleanup)", store.name, store.namespace
+            )
             k8s_client.delete_namespace(store.namespace, wait=True)
 
             # Step 2.5: Remove /etc/hosts entry (non-cluster mode)
@@ -218,10 +220,10 @@ class StoreOrchestrator:
         script_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh")
         )
-        
+
         # Check if entry already exists
         try:
-            with open("/etc/hosts", "r") as f:
+            with open("/etc/hosts") as f:
                 if hostname in f.read():
                     logger.info("[%s] /etc/hosts entry already exists", store_name)
                     return
@@ -244,7 +246,7 @@ class StoreOrchestrator:
                     logger.warning("[%s] Script failed: %s", store_name, result.stderr)
             except Exception as e:
                 logger.warning("[%s] Script error: %s", store_name, e)
-        
+
         # Fallback: direct sudo tee
         entry = f"127.0.0.1 {hostname}"
         try:
@@ -272,7 +274,7 @@ class StoreOrchestrator:
         script_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh")
         )
-        
+
         # Try using the helper script with sudo (sudoers rule allows NOPASSWD)
         if os.path.exists(script_path):
             try:
@@ -289,7 +291,7 @@ class StoreOrchestrator:
                     logger.warning("[%s] Script failed: %s", store_name, result.stderr)
             except Exception as e:
                 logger.warning("[%s] Script error: %s", store_name, e)
-        
+
         # Fallback: use sudo sed
         try:
             result = subprocess.run(
@@ -317,30 +319,34 @@ class StoreOrchestrator:
             "ingress.className": settings.INGRESS_CLASS,
             "ingress.host": f"{store.name}.{settings.BASE_DOMAIN}",
         }
-        
+
         if store.store_type == StoreType.WOOCOMMERCE:
-            base_values.update({
-                "wordpress.adminUser": "admin",
-                "wordpress.adminPassword": wp_password,
-                "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
-                "mysql.rootPassword": db_password,
-                "mysql.database": "wordpress",
-                "mysql.user": "wordpress",
-                "mysql.password": db_password,
-            })
+            base_values.update(
+                {
+                    "wordpress.adminUser": "admin",
+                    "wordpress.adminPassword": wp_password,
+                    "wordpress.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+                    "mysql.rootPassword": db_password,
+                    "mysql.database": "wordpress",
+                    "mysql.user": "wordpress",
+                    "mysql.password": db_password,
+                }
+            )
         elif store.store_type == StoreType.MEDUSA:
             jwt_secret = _generate_password(32)
             cookie_secret = _generate_password(32)
-            base_values.update({
-                "medusa.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
-                "medusa.adminPassword": wp_password,
-                "medusa.jwtSecret": jwt_secret,
-                "medusa.cookieSecret": cookie_secret,
-                "postgres.database": "medusa",
-                "postgres.user": "medusa",
-                "postgres.password": db_password,
-            })
-        
+            base_values.update(
+                {
+                    "medusa.adminEmail": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+                    "medusa.adminPassword": wp_password,
+                    "medusa.jwtSecret": jwt_secret,
+                    "medusa.cookieSecret": cookie_secret,
+                    "postgres.database": "medusa",
+                    "postgres.user": "medusa",
+                    "postgres.password": db_password,
+                }
+            )
+
         return base_values
 
     async def _send_credentials_email(
@@ -355,9 +361,7 @@ class StoreOrchestrator:
         """Look up the store owner's email and send them the credentials."""
         try:
             async with async_session() as session:
-                result = await session.execute(
-                    select(User).where(User.id == store.user_id)
-                )
+                result = await session.execute(select(User).where(User.id == store.user_id))
                 user = result.scalar_one_or_none()
 
             if not user:
@@ -388,9 +392,7 @@ class StoreOrchestrator:
             )
 
             if sent:
-                logger.info(
-                    "[%s] Credential email sent to %s", store.name, user.email
-                )
+                logger.info("[%s] Credential email sent to %s", store.name, user.email)
             else:
                 logger.warning(
                     "[%s] Credential email NOT sent (SMTP not configured or error). "
@@ -399,9 +401,7 @@ class StoreOrchestrator:
                 )
         except Exception as e:
             # Email failure should never block provisioning
-            logger.exception(
-                "[%s] Failed to send credential email: %s", store.name, e
-            )
+            logger.exception("[%s] Failed to send credential email: %s", store.name, e)
 
     async def _update_store_status(
         self,

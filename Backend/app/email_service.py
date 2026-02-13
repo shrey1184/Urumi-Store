@@ -148,13 +148,13 @@ def send_store_credentials_email(
         return False
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🎉 Your Store \"{store_name}\" Credentials"
+    msg["Subject"] = f'🎉 Your Store "{store_name}" Credentials'
     msg["From"] = f"{settings.APP_NAME} <{settings.SMTP_USERNAME}>"
     msg["To"] = recipient_email
 
     # Plain-text fallback
     plain = (
-        f"Your {store_type} store \"{store_name}\" is ready!\n\n"
+        f'Your {store_type} store "{store_name}" is ready!\n\n'
         f"Store URL: {store_url}\n"
         f"Admin URL: {admin_url}\n"
         f"Admin User: {admin_user}\n"
@@ -187,9 +187,7 @@ def send_store_credentials_email(
             server.ehlo()
             server.login(settings.SMTP_USERNAME, settings.SMTP_APP_PASSWORD)
             server.sendmail(settings.SMTP_USERNAME, recipient_email, msg.as_string())
-        logger.info(
-            "Credential email sent to %s for store '%s'", recipient_email, store_name
-        )
+        logger.info("Credential email sent to %s for store '%s'", recipient_email, store_name)
         return True
     except smtplib.SMTPAuthenticationError as e:
         logger.error(
