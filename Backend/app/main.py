@@ -12,6 +12,7 @@ from app.config import settings
 from app.database import init_db
 from app.k8s_client import k8s_client
 from app.routes import router
+from app.auth_routes import auth_router
 
 # ──── Logging ────
 logging.basicConfig(
@@ -52,3 +53,4 @@ app.add_middleware(
 
 # Mount API routes
 app.include_router(router, prefix=settings.API_PREFIX)
+app.include_router(auth_router, prefix=settings.API_PREFIX)

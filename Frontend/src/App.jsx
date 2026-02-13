@@ -1,10 +1,24 @@
 import { Toaster } from "react-hot-toast";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
+import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
 import "./App.css";
+
+// Protected Route Component
+function ProtectedRoute({ children }) {
+  const token = localStorage.getItem("auth_token");
+  
+  if (!token) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return children;
+}
 
 function App() {
   return (
-    <>
+    <BrowserRouter>
       {/* Bauhaus Geometric Background */}
       <div className="geometric-bg">
         <div className="shape-1"></div>
@@ -34,8 +48,21 @@ function App() {
           },
         }}
       />
-      <Dashboard />
-    </>
+      
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

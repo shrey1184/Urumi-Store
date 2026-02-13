@@ -9,10 +9,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.k8s_client import k8s_client
-from app.models import Store, StoreStatus
+from app.models import Store, StoreStatus, User
 from app.orchestrator import _get_namespace, orchestrator
 from app.schemas import (
     HealthResponse,
@@ -42,8 +43,15 @@ async def health_check():
 
 # ───────────────── List Stores ─────────────────
 @router.get("/stores", response_model=StoreListResponse)
-async def list_stores(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Store).order_by(Store.created_at.desc()))
+async def list_stores(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Store)
+        .where(Store.user_id == current_user.id)
+        .order_by(Store.created_at.desc())
+    )
     stores = result.scalars().all()
     return StoreListResponse(
         stores=[StoreResponse.model_validate(s) for s in stores],
@@ -53,8 +61,14 @@ async def list_stores(db: AsyncSession = Depends(get_db)):
 
 # ───────────────── Get Single Store ─────────────────
 @router.get("/stores/{store_id}", response_model=StoreResponse)
-async def get_store(store_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Store).where(Store.id == store_id))
+async def get_store(
+    store_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Store).where(Store.id == store_id, Store.user_id == current_user.id)
+    )
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
@@ -66,15 +80,18 @@ async def get_store(store_id: str, db: AsyncSession = Depends(get_db)):
 async def create_store(
     req: StoreCreateRequest,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Guardrail: max stores
-    count_result = await db.execute(select(func.count(Store.id)))
-    total = count_result.scalar()
-    if total >= settings.MAX_STORES:
+    # Guardrail: per-user max stores
+    count_result = await db.execute(
+        select(func.count(Store.id)).where(Store.user_id == current_user.id)
+    )
+    user_store_count = count_result.scalar()
+    if user_store_count >= settings.MAX_STORES_PER_USER:
         raise HTTPException(
             status_code=429,
-            detail=f"Maximum number of stores ({settings.MAX_STORES}) reached",
+            detail=f"Maximum number of stores per user ({settings.MAX_STORES_PER_USER}) reached",
         )
 
     # Idempotency: check if name already exists
@@ -92,6 +109,7 @@ async def create_store(
         store_type=req.store_type,
         status=StoreStatus.PROVISIONING,
         namespace=namespace,
+        user_id=current_user.id,
     )
     db.add(store)
     await db.commit()
@@ -100,7 +118,12 @@ async def create_store(
     # Kick off provisioning in background
     background_tasks.add_task(orchestrator.create_store, store)
 
-    logger.info("Store %s creation initiated (type=%s)", store.name, store.store_type)
+    logger.info(
+        "Store %s creation initiated by user %s (type=%s)",
+        store.name,
+        current_user.email,
+        store.store_type,
+    )
     return StoreResponse.model_validate(store)
 
 
@@ -109,9 +132,12 @@ async def create_store(
 async def delete_store(
     store_id: str,
     background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Store).where(Store.id == store_id))
+    result = await db.execute(
+        select(Store).where(Store.id == store_id, Store.user_id == current_user.id)
+    )
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
@@ -135,8 +161,14 @@ async def delete_store(
 
 # ───────────────── Get Store Pods ─────────────────
 @router.get("/stores/{store_id}/pods")
-async def get_store_pods(store_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Store).where(Store.id == store_id))
+async def get_store_pods(
+    store_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Store).where(Store.id == store_id, Store.user_id == current_user.id)
+    )
     store = result.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")

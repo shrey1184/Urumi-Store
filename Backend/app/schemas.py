@@ -16,6 +16,17 @@ class StoreCreateRequest(BaseModel):
 
 
 # ---------- Response Schemas ----------
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    name: str | None = None
+    oauth_provider: str
+    created_at: datetime
+    last_login: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class StoreResponse(BaseModel):
     id: str
     name: str

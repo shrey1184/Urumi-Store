@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { getStores, deleteStore } from "../api";
+import { getStores, deleteStore, getCurrentUser, logout } from "../api";
 import StoreCard from "../components/StoreCard";
 import CreateStoreModal from "../components/CreateStoreModal";
 import StatusBar from "../components/StatusBar";
@@ -9,6 +9,8 @@ import {
   RefreshCw,
   Store,
   LayoutDashboard,
+  LogOut,
+  User,
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -16,6 +18,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Fetch current user
+    getCurrentUser()
+      .then((res) => setUser(res.data))
+      .catch((err) => {
+        console.error("Failed to fetch user:", err);
+        logout();
+      });
+  }, []);
 
   const fetchStores = useCallback(async () => {
     try {
@@ -74,6 +87,12 @@ export default function Dashboard() {
           <h1>Store Provisioning Platform</h1>
         </div>
         <div className="header-right">
+          {user && (
+            <div className="user-info">
+              <User size={16} />
+              <span>{user.email}</span>
+            </div>
+          )}
           <button
             className="btn btn-secondary"
             onClick={handleRefresh}
@@ -88,6 +107,9 @@ export default function Dashboard() {
           >
             <Plus size={16} />
             Create Store
+          </button>
+          <button className="btn btn-ghost" onClick={logout} title="Logout">
+            <LogOut size={16} />
           </button>
         </div>
       </header>
