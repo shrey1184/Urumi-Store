@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Frontend URL for redirects
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+    # SMTP / Email (Gmail App Password)
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")  # your-gmail@gmail.com
+    SMTP_APP_PASSWORD: str = os.getenv("SMTP_APP_PASSWORD", "")  # 16-char Google App Password
+
     class Config:
         env_file = ".env"
 

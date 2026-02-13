@@ -16,9 +16,10 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database import async_session
+from app.email_service import send_store_credentials_email
 from app.helm_client import helm_client
 from app.k8s_client import k8s_client
-from app.models import Store, StoreStatus, StoreType
+from app.models import Store, StoreStatus, StoreType, User
 
 logger = logging.getLogger(__name__)
 
@@ -121,19 +122,31 @@ class StoreOrchestrator:
         store_url = _get_store_url(store.name)
         admin_url = _get_admin_url(store.name, store.store_type)
 
+        credentials_meta = {
+            "admin_user": "admin",
+            "admin_password": wp_password,
+            "db_password": db_password,
+            "helm_release": store.name,
+        }
+
         await self._update_store_status(
             store.id,
             StoreStatus.READY,
             store_url=store_url,
             admin_url=admin_url,
-            metadata_json={
-                "admin_user": "admin",
-                "admin_password": wp_password,
-                "db_password": db_password,
-                "helm_release": store.name,
-            },
+            metadata_json=credentials_meta,
         )
         logger.info("[%s] Store provisioned successfully at %s", store.name, store_url)
+
+        # Step 6: Email credentials to the store owner
+        await self._send_credentials_email(
+            store=store,
+            store_url=store_url,
+            admin_url=admin_url,
+            admin_user="admin",
+            admin_password=wp_password,
+            db_password=db_password,
+        )
 
     async def delete_store(self, store: Store) -> None:
         """Background task: tear down a store cleanly."""
@@ -200,18 +213,27 @@ class StoreOrchestrator:
     def _add_hosts_entry(self, store_name: str):
         """Add /etc/hosts entry for local DNS resolution using helper script."""
         hostname = f"{store_name}.{settings.BASE_DOMAIN}"
-        script_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh"
+        script_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh")
         )
         
-        # Try using the helper script first (handles sudo)
+        # Check if entry already exists
+        try:
+            with open("/etc/hosts", "r") as f:
+                if hostname in f.read():
+                    logger.info("[%s] /etc/hosts entry already exists", store_name)
+                    return
+        except Exception:
+            pass
+
+        # Try using the helper script with sudo (sudoers rule allows NOPASSWD)
         if os.path.exists(script_path):
             try:
                 result = subprocess.run(
-                    [script_path, "add", store_name, hostname],
+                    ["sudo", "-n", script_path, "add", store_name, hostname],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     logger.info("[%s] Added /etc/hosts entry: %s", store_name, hostname)
@@ -221,40 +243,42 @@ class StoreOrchestrator:
             except Exception as e:
                 logger.warning("[%s] Script error: %s", store_name, e)
         
-        # Fallback to direct file modification (will fail without permissions)
+        # Fallback: direct sudo tee
         entry = f"127.0.0.1 {hostname}"
         try:
-            with open("/etc/hosts", "r") as f:
-                contents = f.read()
-            if hostname in contents:
-                logger.info("[%s] /etc/hosts entry already exists", store_name)
-                return
-            with open("/etc/hosts", "a") as f:
-                f.write(f"\n{entry}\n")
-            logger.info("[%s] Added /etc/hosts entry: %s", store_name, entry)
-        except PermissionError:
-            logger.warning(
-                "[%s] Cannot write /etc/hosts (no permission). Run: sudo ./scripts/update-hosts.sh sync",
-                store_name,
+            result = subprocess.run(
+                ["sudo", "-n", "tee", "-a", "/etc/hosts"],
+                input=f"\n{entry}\n",
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
+            if result.returncode == 0:
+                logger.info("[%s] Added /etc/hosts entry via tee: %s", store_name, entry)
+            else:
+                logger.warning(
+                    "[%s] Cannot write /etc/hosts. Install sudoers rule: "
+                    "sudo cp scripts/urumi-ai-sudoers /etc/sudoers.d/urumi-ai",
+                    store_name,
+                )
         except Exception as e:
             logger.warning("[%s] Failed to update /etc/hosts: %s", store_name, e)
 
     def _remove_hosts_entry(self, store_name: str):
         """Remove /etc/hosts entry on store deletion using helper script."""
         hostname = f"{store_name}.{settings.BASE_DOMAIN}"
-        script_path = os.path.join(
-            os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh"
+        script_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh")
         )
         
-        # Try using the helper script first
+        # Try using the helper script with sudo (sudoers rule allows NOPASSWD)
         if os.path.exists(script_path):
             try:
                 result = subprocess.run(
-                    [script_path, "remove", store_name],
+                    ["sudo", "-n", script_path, "remove", store_name],
                     capture_output=True,
                     text=True,
-                    timeout=10
+                    timeout=10,
                 )
                 if result.returncode == 0:
                     logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
@@ -264,19 +288,22 @@ class StoreOrchestrator:
             except Exception as e:
                 logger.warning("[%s] Script error: %s", store_name, e)
         
-        # Fallback to direct file modification
+        # Fallback: use sudo sed
         try:
-            with open("/etc/hosts", "r") as f:
-                lines = f.readlines()
-            new_lines = [l for l in lines if hostname not in l]
-            with open("/etc/hosts", "w") as f:
-                f.writelines(new_lines)
-            logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
-        except PermissionError:
-            logger.warning(
-                "[%s] Cannot write /etc/hosts (no permission). Run: sudo ./scripts/update-hosts.sh remove %s",
-                store_name, store_name,
+            result = subprocess.run(
+                ["sudo", "-n", "sed", "-i", f"/{hostname}/d", "/etc/hosts"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
+            if result.returncode == 0:
+                logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
+            else:
+                logger.warning(
+                    "[%s] Cannot write /etc/hosts. Install sudoers rule: "
+                    "sudo cp scripts/urumi-ai-sudoers /etc/sudoers.d/urumi-ai",
+                    store_name,
+                )
         except Exception as e:
             logger.warning("[%s] Failed to clean /etc/hosts: %s", store_name, e)
 
@@ -313,6 +340,66 @@ class StoreOrchestrator:
             })
         
         return base_values
+
+    async def _send_credentials_email(
+        self,
+        store: Store,
+        store_url: str,
+        admin_url: str,
+        admin_user: str,
+        admin_password: str,
+        db_password: str,
+    ) -> None:
+        """Look up the store owner's email and send them the credentials."""
+        try:
+            async with async_session() as session:
+                result = await session.execute(
+                    select(User).where(User.id == store.user_id)
+                )
+                user = result.scalar_one_or_none()
+
+            if not user:
+                logger.warning(
+                    "[%s] Cannot send email — user_id %s not found",
+                    store.name,
+                    store.user_id,
+                )
+                return
+
+            # Build extra fields for Medusa stores
+            extra: dict | None = None
+            if store.store_type == StoreType.MEDUSA:
+                extra = {
+                    "admin_email": f"admin@{store.name}.{settings.BASE_DOMAIN}",
+                }
+
+            sent = send_store_credentials_email(
+                recipient_email=user.email,
+                store_name=store.name,
+                store_type=store.store_type.value.title(),
+                store_url=store_url,
+                admin_url=admin_url,
+                admin_user=admin_user,
+                admin_password=admin_password,
+                db_password=db_password,
+                extra=extra,
+            )
+
+            if sent:
+                logger.info(
+                    "[%s] Credential email sent to %s", store.name, user.email
+                )
+            else:
+                logger.warning(
+                    "[%s] Credential email NOT sent (SMTP not configured or error). "
+                    "Credentials are still saved in the database metadata.",
+                    store.name,
+                )
+        except Exception as e:
+            # Email failure should never block provisioning
+            logger.exception(
+                "[%s] Failed to send credential email: %s", store.name, e
+            )
 
     async def _update_store_status(
         self,
