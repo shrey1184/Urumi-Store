@@ -2,10 +2,7 @@
 ingress:
   className: "nginx"
   annotations: {}
-  tls:
-    - secretName: local-store-tls
-      hosts:
-        - "{{ .storeName }}.local.store.dev"
+  tls: []  # No TLS for local
 
 postgres:
   storage:
@@ -20,22 +17,24 @@ postgres:
       memory: 512Mi
 
 medusa:
+  seedDemoData: true  # Enable demo products for local testing
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
+      cpu: 200m
       memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 storefront:
+  enabled: true
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m
+      memory: 512Mi
     limits:
-      cpu: 300m
-      memory: 256Mi
+      cpu: "1"
+      memory: 1Gi
 
 redis:
   resources:

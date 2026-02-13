@@ -5,10 +5,7 @@ ingress:
   className: "traefik"  # k3s default
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  tls:
-    - secretName: "{{ .Values.storeName }}-tls"
-      hosts:
-        - "{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+  tls: []  # Configure TLS at install time with --set
 
 postgres:
   storage:
@@ -23,22 +20,26 @@ postgres:
       memory: 1Gi
 
 medusa:
+  seedDemoData: false  # No demo data in production
+  replicas: 2  # High availability
   resources:
     requests:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+storefront:
+  enabled: true
+  replicas: 2  # High availability
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
     limits:
       cpu: "1"
       memory: 1Gi
-
-storefront:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
 
 redis:
   resources:

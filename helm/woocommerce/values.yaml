@@ -87,3 +87,10 @@ wpcli:
     limits:
       cpu: 500m
       memory: 512Mi
+
+# ─── WooCommerce Settings ───
+woocommerce:
+  # Store settings applied during setup
+  storeCountry: "US"
+  currency: "USD"
+  enableTaxes: false

@@ -42,25 +42,36 @@ spec:
         - name: storefront
           image: {{ .Values.storefront.image }}
           imagePullPolicy: {{ .Values.storefront.imagePullPolicy | default "IfNotPresent" }}
+          workingDir: /app/storefront
           command:
             - sh
             - -c
             - |
-              # Clone Medusa starter storefront if not exists
-              if [ ! -d "/app/storefront" ]; then
-                apk add --no-cache git
-                git clone https://github.com/medusajs/nextjs-starter-medusa.git /app/storefront
-                cd /app/storefront
-                npm install
-              fi
-              cd /app/storefront
-              npm run dev -- -p 8000 -H 0.0.0.0
+              set -e
+              echo "Building Next.js storefront with backend URL: ${NEXT_PUBLIC_MEDUSA_BACKEND_URL}"
+              npm run build
+              echo "Starting Next.js production server on port 8000..."
+              npm run start
           ports:
             - containerPort: 8000
               name: http
           envFrom:
             - secretRef:
                 name: {{ .Values.storeName }}-storefront-secret
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            - name: NEXT_PUBLIC_MEDUSA_BACKEND_URL
+              value: "http://{{ .Values.storeName }}-medusa:9000"
+            - name: NEXT_PUBLIC_BASE_URL
+              value: "http://{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+            - name: REVALIDATE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.storeName }}-medusa-secret
+                  key: JWT_SECRET
           resources:
             {{- toYaml .Values.storefront.resources | nindent 12 }}
           {{- with .Values.storefront.readinessProbe }}

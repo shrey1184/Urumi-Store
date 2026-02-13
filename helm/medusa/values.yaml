@@ -12,50 +12,51 @@ ingress:
 
 # ─── Medusa Backend ───
 medusa:
-  image: node:18-alpine
+  image: medusa-backend:latest  # Pre-built with MedusaJS installed
   imagePullPolicy: IfNotPresent
   replicas: 1
   adminEmail: "admin@store.local"
   adminPassword: ""  # set via --set at install time
   jwtSecret: ""  # set via --set
   cookieSecret: ""  # set via --set
+  seedDemoData: false  # Set to true to seed demo products
   resources:
     requests:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 300m
+      memory: 512Mi
     limits:
-      cpu: "1"
-      memory: 1Gi
+      cpu: "2"
+      memory: 2Gi
   readinessProbe:
     httpGet:
       path: /health
       port: 9000
-    initialDelaySeconds: 15
+    initialDelaySeconds: 60
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 6
+    failureThreshold: 12
   livenessProbe:
     httpGet:
       path: /health
       port: 9000
-    initialDelaySeconds: 30
+    initialDelaySeconds: 90
     periodSeconds: 20
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 6
 
 # ─── Storefront (Next.js) ───
 storefront:
-  enabled: false
-  image: node:18-alpine
+  enabled: true
+  image: medusa-storefront:latest  # Pre-built with Next.js Medusa starter
   imagePullPolicy: IfNotPresent
   replicas: 1
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
+      cpu: 200m
       memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
   readinessProbe:
     httpGet:
       path: /

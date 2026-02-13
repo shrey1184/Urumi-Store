@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.storeName }}-medusa-config
+  labels:
+    {{- include "medusa.labels" . | nindent 4 }}
+data:
+  medusa-config.js: |
+    module.exports = {
+      projectConfig: {
+        redis_url: process.env.REDIS_URL,
+        database_url: process.env.DATABASE_URL,
+        database_type: "postgres",
+        store_cors: process.env.STORE_CORS || "http://localhost:8000",
+        admin_cors: process.env.ADMIN_CORS || "http://localhost:7001,http://localhost:7000",
+        database_extra: {
+          ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+          pool: {
+            min: 2,
+            max: 10,
+            acquireTimeoutMillis: 30000,
+            idleTimeoutMillis: 30000,
+            reapIntervalMillis: 1000,
+          }
+        },
+        jwt_secret: process.env.JWT_SECRET,
+        cookie_secret: process.env.COOKIE_SECRET,
+      },
+      plugins: [
+        {
+          resolve: `@medusajs/file-local`,
+          options: {
+            upload_dir: "/app/uploads",
+          },
+        },
+        {
+          resolve: "@medusajs/admin",
+          options: {
+            autoRun: true,
+            develop: {
+              open: process.env.OPEN_BROWSER !== "false",
+            },
+          },
+        },
+      ],
+      modules: {},
+    };

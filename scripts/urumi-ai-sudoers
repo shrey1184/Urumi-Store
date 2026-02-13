@@ -1,0 +1,16 @@
+# Sudoers configuration for Urumi-Ai Store Platform
+# This allows the backend to update /etc/hosts for store domains
+# 
+# To install:
+#   sudo visudo -f /etc/sudoers.d/urumi-ai
+# Or:
+#   sudo cp scripts/urumi-ai-sudoers /etc/sudoers.d/urumi-ai
+#   sudo chmod 0440 /etc/sudoers.d/urumi-ai
+
+# Allow the current user to run the update-hosts.sh script without password
+%wheel ALL=(ALL) NOPASSWD: /home/shrey/Urumi-Ai/scripts/update-hosts.sh
+shrey ALL=(ALL) NOPASSWD: /home/shrey/Urumi-Ai/scripts/update-hosts.sh
+
+# Alternative: Allow tee and sed for /etc/hosts only
+# shrey ALL=(ALL) NOPASSWD: /usr/bin/tee -a /etc/hosts
+# shrey ALL=(ALL) NOPASSWD: /usr/bin/sed -i * /etc/hosts

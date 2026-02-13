@@ -5,9 +5,14 @@ metadata:
   labels:
     {{- include "medusa.labels" . | nindent 4 }}
     app.kubernetes.io/component: init
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
 spec:
   ttlSecondsAfterFinished: 300
   backoffLimit: 3
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
@@ -38,21 +43,51 @@ spec:
         - name: medusa-init
           image: {{ .Values.medusa.image }}
           imagePullPolicy: {{ .Values.medusa.imagePullPolicy | default "IfNotPresent" }}
+          workingDir: /app/medusa
           command:
             - sh
             - -c
             - |
-              echo "Initializing MedusaJS store..."
+              set -e
+              echo "=== MedusaJS Initialization ==="
               echo "Database: ${DATABASE_URL}"
-              echo "Admin: ${ADMIN_EMAIL}"
-              echo "Initialization complete (demo mode)!"
+              echo "Admin Email: ${ADMIN_EMAIL}"
+              
+              # Run database migrations
+              echo "Running database migrations..."
+              npx medusa db:migrate
+              
+              # Create admin user
+              echo "Creating admin user..."
+              npx medusa user --email "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" || echo "Admin user may already exist"
+              
+              # Seed store data if enabled
+              if [ "${SEED_DEMO_DATA}" = "true" ]; then
+                echo "Seeding demo data..."
+                npx medusa db:seed || echo "Seed data optional"
+              fi
+              
+              echo "✓ MedusaJS initialization complete!"
           envFrom:
             - secretRef:
                 name: {{ .Values.storeName }}-medusa-secret
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: SEED_DEMO_DATA
+              value: "{{ .Values.medusa.seedDemoData | default false }}"
+          volumeMounts:
+            - name: medusa-config
+              mountPath: /app/medusa/medusa-config.js
+              subPath: medusa-config.js
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
               cpu: 200m
-              memory: 256Mi
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 2Gi
+      volumes:
+        - name: medusa-config
+          configMap:
+            name: {{ .Values.storeName }}-medusa-config

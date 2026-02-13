@@ -9,6 +9,7 @@ import logging
 import os
 import secrets
 import string
+import subprocess
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -197,8 +198,30 @@ class StoreOrchestrator:
         k8s_client.create_tls_secret(namespace, "local-store-tls", cert_data, key_data)
 
     def _add_hosts_entry(self, store_name: str):
-        """Add /etc/hosts entry for local DNS resolution."""
+        """Add /etc/hosts entry for local DNS resolution using helper script."""
         hostname = f"{store_name}.{settings.BASE_DOMAIN}"
+        script_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh"
+        )
+        
+        # Try using the helper script first (handles sudo)
+        if os.path.exists(script_path):
+            try:
+                result = subprocess.run(
+                    [script_path, "add", store_name, hostname],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("[%s] Added /etc/hosts entry: %s", store_name, hostname)
+                    return
+                else:
+                    logger.warning("[%s] Script failed: %s", store_name, result.stderr)
+            except Exception as e:
+                logger.warning("[%s] Script error: %s", store_name, e)
+        
+        # Fallback to direct file modification (will fail without permissions)
         entry = f"127.0.0.1 {hostname}"
         try:
             with open("/etc/hosts", "r") as f:
@@ -211,15 +234,37 @@ class StoreOrchestrator:
             logger.info("[%s] Added /etc/hosts entry: %s", store_name, entry)
         except PermissionError:
             logger.warning(
-                "[%s] Cannot write /etc/hosts (no permission). Add manually: %s",
-                store_name, entry,
+                "[%s] Cannot write /etc/hosts (no permission). Run: sudo ./scripts/update-hosts.sh sync",
+                store_name,
             )
         except Exception as e:
             logger.warning("[%s] Failed to update /etc/hosts: %s", store_name, e)
 
     def _remove_hosts_entry(self, store_name: str):
-        """Remove /etc/hosts entry on store deletion."""
+        """Remove /etc/hosts entry on store deletion using helper script."""
         hostname = f"{store_name}.{settings.BASE_DOMAIN}"
+        script_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "scripts", "update-hosts.sh"
+        )
+        
+        # Try using the helper script first
+        if os.path.exists(script_path):
+            try:
+                result = subprocess.run(
+                    [script_path, "remove", store_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if result.returncode == 0:
+                    logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
+                    return
+                else:
+                    logger.warning("[%s] Script failed: %s", store_name, result.stderr)
+            except Exception as e:
+                logger.warning("[%s] Script error: %s", store_name, e)
+        
+        # Fallback to direct file modification
         try:
             with open("/etc/hosts", "r") as f:
                 lines = f.readlines()
@@ -229,8 +274,8 @@ class StoreOrchestrator:
             logger.info("[%s] Removed /etc/hosts entry for %s", store_name, hostname)
         except PermissionError:
             logger.warning(
-                "[%s] Cannot write /etc/hosts (no permission). Remove manually: %s",
-                store_name, hostname,
+                "[%s] Cannot write /etc/hosts (no permission). Run: sudo ./scripts/update-hosts.sh remove %s",
+                store_name, store_name,
             )
         except Exception as e:
             logger.warning("[%s] Failed to clean /etc/hosts: %s", store_name, e)

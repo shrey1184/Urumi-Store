@@ -62,52 +62,14 @@ spec:
         - name: medusa
           image: {{ .Values.medusa.image }}
           imagePullPolicy: {{ .Values.medusa.imagePullPolicy | default "IfNotPresent" }}
+          workingDir: /app/medusa
           command:
             - sh
             - -c
             - |
-              # Create a simple demo Medusa-like API server
-              cat > /tmp/server.js << 'EOF'
-              const http = require('http');
-              const port = process.env.PORT || 9000;
-              
-              const server = http.createServer((req, res) => {
-                res.setHeader('Content-Type', 'application/json');
-                
-                if (req.url === '/health') {
-                  res.writeHead(200);
-                  res.end(JSON.stringify({ status: 'ok' }));
-                } else if (req.url === '/admin') {
-                  res.writeHead(200);
-                  res.end(JSON.stringify({ 
-                    message: 'MedusaJS Admin Portal (Demo)',
-                    email: process.env.ADMIN_EMAIL,
-                    note: 'This is a demo store. Full MedusaJS implementation in progress.'
-                  }));
-                } else if (req.url === '/store') {
-                  res.writeHead(200);
-                  res.end(JSON.stringify({ 
-                    message: 'MedusaJS Store API (Demo)',
-                    products: [],
-                    note: 'This is a demo store. Full MedusaJS implementation in progress.'
-                  }));
-                } else {
-                  res.writeHead(200);
-                  res.end(JSON.stringify({ 
-                    message: 'MedusaJS Store Running',
-                    version: '2.0.0-demo',
-                    database: process.env.DATABASE_URL ? 'connected' : 'not configured',
-                    redis: process.env.REDIS_URL ? 'connected' : 'not configured'
-                  }));
-                }
-              });
-              
-              server.listen(port, '0.0.0.0', function() {
-                console.log('MedusaJS demo server running on port ' + port);
-              });
-              EOF
-              
-              node /tmp/server.js
+              set -e
+              echo "Starting MedusaJS backend..."
+              npx medusa start
           ports:
             - containerPort: 9000
               name: http
@@ -119,11 +81,20 @@ spec:
               value: "production"
             - name: PORT
               value: "9000"
+            - name: ADMIN_CORS
+              value: "http://{{ .Values.storeName }}.{{ .Values.baseDomain }},https://{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+            - name: STORE_CORS
+              value: "http://{{ .Values.storeName }}.{{ .Values.baseDomain }},https://{{ .Values.storeName }}.{{ .Values.baseDomain }}"
+            - name: MEDUSA_ADMIN_ONBOARDING_TYPE
+              value: "default"
           resources:
             {{- toYaml .Values.medusa.resources | nindent 12 }}
           volumeMounts:
-            - name: medusa-data
-              mountPath: /app
+            - name: medusa-config
+              mountPath: /app/medusa/medusa-config.js
+              subPath: medusa-config.js
+            - name: medusa-uploads
+              mountPath: /app/uploads
           {{- with .Values.medusa.readinessProbe }}
           readinessProbe:
             {{- toYaml . | nindent 12 }}
@@ -133,6 +104,9 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
-        - name: medusa-data
+        - name: medusa-config
+          configMap:
+            name: {{ .Values.storeName }}-medusa-config
+        - name: medusa-uploads
           persistentVolumeClaim:
             claimName: {{ .Values.storeName }}-medusa-pvc

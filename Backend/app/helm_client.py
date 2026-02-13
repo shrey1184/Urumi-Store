@@ -48,7 +48,7 @@ class HelmClient:
         values: dict | None = None,
         values_file: str | None = None,
         wait: bool = True,
-        timeout: str = "300s",
+        timeout: str = "600s",
     ) -> tuple[bool, str]:
         """Install a Helm chart. Returns (success, output)."""
         args = [
@@ -93,7 +93,7 @@ class HelmClient:
             namespace,
             "--wait",
             "--timeout",
-            "300s",
+            "600s",
         ]
 
         if values_file:

@@ -8,10 +8,10 @@ metadata:
   annotations:
     "helm.sh/hook": post-install
     "helm.sh/hook-weight": "10"
-    "helm.sh/hook-delete-policy": hook-succeeded
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
 spec:
-  backoffLimit: 5
-  activeDeadlineSeconds: 300
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
@@ -19,6 +19,10 @@ spec:
         app.kubernetes.io/component: wp-setup
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        fsGroup: 33  # www-data - ensures proper permissions on shared volume
+        runAsUser: 33
+        runAsGroup: 33
       initContainers:
         - name: wait-for-wordpress
           image: busybox:1.36
@@ -59,11 +63,41 @@ spec:
                 --skip-email \
                 --path=/var/www/html || echo "WordPress already installed"
 
-              echo "=== Installing WooCommerce ==="
-              wp plugin install woocommerce --activate --path=/var/www/html || echo "WooCommerce install failed (network issue) - install manually via wp-admin"
+              echo "=== Installing WooCommerce Plugin ==="
+              # Try up to 3 times to install WooCommerce (using 8.9.3 for WP 6.4 compatibility)
+              for i in 1 2 3; do
+                if wp plugin install woocommerce --version=8.9.3 --activate --path=/var/www/html 2>&1; then
+                  echo "✓ WooCommerce installed successfully"
+                  break
+                else
+                  echo "Attempt $i failed, retrying in 5s..."
+                  sleep 5
+                fi
+              done
 
-              echo "=== Setup complete - WordPress is ready ==="
-              echo "Note: If WooCommerce install failed, you can install it manually from the wp-admin plugins page"
+              # Verify installation
+              if wp plugin is-installed woocommerce --path=/var/www/html; then
+                echo "✓ WooCommerce is installed and active"
+                
+                # Configure basic WooCommerce settings
+                echo "=== Configuring WooCommerce ==="
+                wp option update woocommerce_store_address "" --path=/var/www/html
+                wp option update woocommerce_store_city "" --path=/var/www/html
+                wp option update woocommerce_default_country "{{ .Values.woocommerce.storeCountry }}" --path=/var/www/html
+                wp option update woocommerce_currency "{{ .Values.woocommerce.currency }}" --path=/var/www/html
+                {{- if .Values.woocommerce.enableTaxes }}
+                wp option update woocommerce_calc_taxes "yes" --path=/var/www/html
+                {{- else }}
+                wp option update woocommerce_calc_taxes "no" --path=/var/www/html
+                {{- end }}
+                
+                echo "✓ WooCommerce configured with default settings"
+              else
+                echo "✗ Failed to install WooCommerce - please install manually via wp-admin"
+                exit 1
+              fi
+
+              echo "=== Setup complete - WordPress + WooCommerce ready ==="
           envFrom:
             - secretRef:
                 name: {{ .Values.storeName }}-wp-secret
