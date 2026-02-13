@@ -31,6 +31,7 @@ _OAUTH_STATE_MAX = 1000  # prevent unbounded growth
 def _cleanup_expired_states():
     """Remove expired OAuth states."""
     import time
+
     now = time.time()
     expired = [s for s, ts in _oauth_states.items() if now - ts > _OAUTH_STATE_TTL]
     for s in expired:
@@ -50,9 +51,12 @@ async def login(provider: str = "google"):
     state = secrets.token_urlsafe(32)
     _cleanup_expired_states()
     if len(_oauth_states) >= _OAUTH_STATE_MAX:
-        logger.warning("OAuth state storage full (%d entries), clearing old states", len(_oauth_states))
+        logger.warning(
+            "OAuth state storage full (%d entries), clearing old states", len(_oauth_states)
+        )
         _oauth_states.clear()
     import time
+
     _oauth_states[state] = time.time()
 
     # Get authorization URL
@@ -76,6 +80,7 @@ async def oauth_callback(
 
     # Verify CSRF state
     import time
+
     state_ts = _oauth_states.get(state)
     if state_ts is None or (time.time() - state_ts) > _OAUTH_STATE_TTL:
         _oauth_states.pop(state, None)
