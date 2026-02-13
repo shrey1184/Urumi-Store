@@ -77,8 +77,78 @@ class KubernetesClient:
                 return False
             raise
 
+    def get_namespace_status(self, namespace: str) -> str | None:
+        """Get namespace phase: 'Active', 'Terminating', or None if not found."""
+        try:
+            ns = self.core_v1.read_namespace(name=namespace)
+            return ns.status.phase
+        except ApiException as e:
+            if e.status == 404:
+                return None
+            raise
+
+    def wait_for_namespace_deletion(
+        self, namespace: str, timeout: int = 120, poll_interval: int = 3
+    ) -> bool:
+        """Block until a namespace is fully deleted. Returns True if gone, False on timeout."""
+        import time
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            status = self.get_namespace_status(namespace)
+            if status is None:
+                logger.info("Namespace %s fully deleted", namespace)
+                return True
+            logger.info(
+                "Waiting for namespace %s to be deleted (status=%s)...",
+                namespace,
+                status,
+            )
+            time.sleep(poll_interval)
+        logger.error(
+            "Timed out waiting for namespace %s to be deleted after %ds",
+            namespace,
+            timeout,
+        )
+        return False
+
+    def force_delete_namespace(self, namespace: str):
+        """Force-remove finalizers from a stuck-terminating namespace."""
+        try:
+            ns = self.core_v1.read_namespace(name=namespace)
+            if ns.spec.finalizers:
+                ns.spec.finalizers = []
+                self.core_v1.replace_namespace_finalize(name=namespace, body=ns)
+                logger.info("Removed finalizers from namespace %s", namespace)
+        except ApiException as e:
+            if e.status == 404:
+                logger.info("Namespace %s already gone", namespace)
+            else:
+                logger.warning("Failed to force-delete namespace %s: %s", namespace, e)
+
     def create_namespace(self, namespace: str, labels: dict | None = None):
-        """Create a namespace with labels."""
+        """Create a namespace with labels. Waits if namespace is terminating."""
+        # If namespace is currently terminating, wait for it to fully disappear
+        ns_status = self.get_namespace_status(namespace)
+        if ns_status == "Terminating":
+            logger.info(
+                "Namespace %s is still terminating, waiting for cleanup...", namespace
+            )
+            deleted = self.wait_for_namespace_deletion(namespace, timeout=120)
+            if not deleted:
+                # Try to force-remove finalizers and wait a bit more
+                logger.warning(
+                    "Namespace %s stuck terminating, attempting force cleanup", namespace
+                )
+                self.force_delete_namespace(namespace)
+                deleted = self.wait_for_namespace_deletion(namespace, timeout=30)
+                if not deleted:
+                    raise RuntimeError(
+                        f"Namespace {namespace} is stuck in Terminating state. "
+                        f"Please wait a moment and try again, or manually clean it up "
+                        f"with: kubectl delete ns {namespace} --force --grace-period=0"
+                    )
+
         body = client.V1Namespace(
             metadata=client.V1ObjectMeta(
                 name=namespace,
@@ -91,22 +161,38 @@ class KubernetesClient:
         except ApiException as e:
             if e.status == 409:
                 logger.warning("Namespace %s already exists (idempotent)", namespace)
+            elif e.status == 403 and "being terminated" in str(e.body):
+                raise RuntimeError(
+                    f"Namespace {namespace} is being terminated by Kubernetes. "
+                    f"Please wait a moment and try creating the store again."
+                )
             else:
                 raise
 
-    def delete_namespace(self, namespace: str):
+    def delete_namespace(self, namespace: str, wait: bool = True):
         """Delete a namespace and all resources within it."""
         try:
             self.core_v1.delete_namespace(
                 name=namespace,
-                body=client.V1DeleteOptions(propagation_policy="Foreground"),
+                body=client.V1DeleteOptions(propagation_policy="Background", grace_period_seconds=0),
             )
-            logger.info("Deleted namespace %s", namespace)
+            logger.info("Initiated deletion of namespace %s", namespace)
         except ApiException as e:
             if e.status == 404:
                 logger.warning("Namespace %s not found during deletion", namespace)
+                return
             else:
                 raise
+
+        # Wait for namespace to be fully gone so the name can be reused immediately
+        if wait:
+            deleted = self.wait_for_namespace_deletion(namespace, timeout=120)
+            if not deleted:
+                logger.warning(
+                    "Namespace %s stuck terminating, attempting force cleanup", namespace
+                )
+                self.force_delete_namespace(namespace)
+                self.wait_for_namespace_deletion(namespace, timeout=30)
 
     def get_namespace_pods(self, namespace: str) -> list:
         """Get all pods in a namespace."""

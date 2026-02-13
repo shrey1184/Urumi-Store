@@ -47,6 +47,24 @@ async def list_stores(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Auto-clean stale DELETING stores older than 5 minutes
+    stale_cutoff = datetime.now(UTC).replace(microsecond=0)
+    from datetime import timedelta
+    stale_cutoff = stale_cutoff - timedelta(minutes=5)
+    stale_result = await db.execute(
+        select(Store).where(
+            Store.user_id == current_user.id,
+            Store.status == StoreStatus.DELETING,
+            Store.updated_at < stale_cutoff,
+        )
+    )
+    stale_stores = stale_result.scalars().all()
+    for stale in stale_stores:
+        logger.info("Auto-cleaning stale DELETING store: %s", stale.name)
+        await db.delete(stale)
+    if stale_stores:
+        await db.commit()
+
     result = await db.execute(
         select(Store)
         .where(Store.user_id == current_user.id)
@@ -83,9 +101,12 @@ async def create_store(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Guardrail: per-user max stores
+    # Guardrail: per-user max stores (don't count stores being deleted)
     count_result = await db.execute(
-        select(func.count(Store.id)).where(Store.user_id == current_user.id)
+        select(func.count(Store.id)).where(
+            Store.user_id == current_user.id,
+            Store.status != StoreStatus.DELETING,
+        )
     )
     user_store_count = count_result.scalar()
     if user_store_count >= settings.MAX_STORES_PER_USER:
@@ -94,16 +115,50 @@ async def create_store(
             detail=f"Maximum number of stores per user ({settings.MAX_STORES_PER_USER}) reached",
         )
 
-    # Idempotency: check if name already exists
-    existing = await db.execute(select(Store).where(Store.name == req.name))
+    # Idempotency: check if name already exists (ignore stores being deleted)
+    existing = await db.execute(
+        select(Store).where(
+            Store.name == req.name,
+            Store.status != StoreStatus.DELETING,
+        )
+    )
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=409,
             detail=f"Store with name '{req.name}' already exists",
         )
 
-    # Create store record
+    # Clean up any leftover DB records for this name that are in DELETING state
+    stale_result = await db.execute(
+        select(Store).where(
+            Store.name == req.name,
+            Store.status == StoreStatus.DELETING,
+        )
+    )
+    stale_store = stale_result.scalar_one_or_none()
+    if stale_store:
+        await db.delete(stale_store)
+        await db.commit()
+
+    # Check if K8s namespace still exists (e.g., still terminating from a previous delete)
     namespace = _get_namespace(req.name)
+    ns_status = k8s_client.get_namespace_status(namespace)
+    if ns_status == "Terminating":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"The previous store '{req.name}' is still being cleaned up by Kubernetes. "
+                f"Please wait a minute and try again."
+            ),
+        )
+    elif ns_status == "Active":
+        # Namespace exists but no DB record — orphaned namespace, clean it up
+        logger.warning(
+            "Orphaned namespace %s found, deleting before re-creation", namespace
+        )
+        k8s_client.delete_namespace(namespace, wait=True)
+
+    # Create store record
     store = Store(
         name=req.name,
         store_type=req.store_type,
@@ -154,7 +209,7 @@ async def delete_store(
     background_tasks.add_task(orchestrator.delete_store, store)
 
     return MessageResponse(
-        message=f"Store '{store.name}' deletion initiated",
+        message=f"Store '{store.name}' deletion initiated. The name will be available for reuse once cleanup completes.",
         store_id=store.id,
     )
 

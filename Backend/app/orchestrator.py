@@ -159,15 +159,17 @@ class StoreOrchestrator:
             if not success:
                 logger.warning("[%s] Helm uninstall warning: %s", store.name, output)
 
-            # Step 2: Delete namespace (cleans up all remaining resources)
-            logger.info("[%s] Deleting namespace %s", store.name, store.namespace)
-            k8s_client.delete_namespace(store.namespace)
+            # Step 2: Delete namespace and WAIT for it to fully disappear
+            # This is critical — K8s namespace deletion is async and can take time.
+            # We must wait so the store name can be reused immediately.
+            logger.info("[%s] Deleting namespace %s (waiting for full cleanup)", store.name, store.namespace)
+            k8s_client.delete_namespace(store.namespace, wait=True)
 
             # Step 2.5: Remove /etc/hosts entry (non-cluster mode)
             if not settings.IN_CLUSTER:
                 self._remove_hosts_entry(store.name)
 
-            # Step 3: Remove from DB
+            # Step 3: Remove from DB — only AFTER namespace is fully gone
             async with async_session() as session:
                 result = await session.execute(select(Store).where(Store.id == store.id))
                 db_store = result.scalar_one_or_none()
@@ -175,7 +177,7 @@ class StoreOrchestrator:
                     await session.delete(db_store)
                     await session.commit()
 
-            logger.info("[%s] Store deleted successfully", store.name)
+            logger.info("[%s] Store deleted successfully (namespace fully cleaned up)", store.name)
 
         except Exception as e:
             logger.exception("Failed to delete store %s: %s", store.name, e)
