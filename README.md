@@ -24,6 +24,8 @@
 - [Troubleshooting](#-troubleshooting)
 - [Documentation](#-documentation)
 - [Contributing](#-contributing)
+- [Roadmap](#-roadmap)
+- [Known Limitations](#-known-limitations)
 
 ---
 
@@ -91,7 +93,7 @@ A production-grade platform that automates e-commerce store deployment on Kubern
 | **MedusaJS Chart** | Helm | Medusa + PostgreSQL + Redis + Next.js Storefront + Init Job + Ingress |
 | **Platform Chart** | Helm | Deploys the API + Dashboard onto K8s with RBAC |
 
-> 📖 For detailed architecture, data flows, and design decisions, see [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
+> 📖 For detailed architecture, data flows, and design decisions, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -226,8 +228,6 @@ This configures:
 - ✅ Syncs all existing store domains
 
 **Now you can create stores and immediately access them in your browser!**
-
-> 📖 For troubleshooting DNS issues, see [Docs/DNS_SETUP.md](Docs/DNS_SETUP.md)
 
 **Alternative: If you prefer manual management:**
 
@@ -430,15 +430,19 @@ EOF
 Urumi-Ai/
 ├── Backend/                          # FastAPI Backend
 │   ├── app/
+│   │   ├── __init__.py               # Package init
 │   │   ├── main.py                   # FastAPI entry point, CORS, lifespan
 │   │   ├── config.py                 # Pydantic settings (all from env vars)
 │   │   ├── database.py               # SQLAlchemy async engine (SQLite / PostgreSQL)
-│   │   ├── models.py                 # Store ORM model (id, name, type, status, URLs)
+│   │   ├── models.py                 # User + Store ORM models with status enum
 │   │   ├── schemas.py                # Pydantic request/response validation
 │   │   ├── routes.py                 # API endpoints (health, stores CRUD, pods)
+│   │   ├── auth.py                   # JWT tokens, OAuth client, get_current_user
+│   │   ├── auth_routes.py            # OAuth login/callback, user management
 │   │   ├── orchestrator.py           # Store lifecycle (create→provision→ready→delete)
 │   │   ├── k8s_client.py             # Kubernetes client (namespace, quota, secrets, pods)
-│   │   └── helm_client.py            # Async Helm CLI wrapper (install, upgrade, rollback)
+│   │   ├── helm_client.py            # Async Helm CLI wrapper (install, upgrade, rollback)
+│   │   └── email_service.py          # SMTP email delivery for store credentials
 │   ├── Dockerfile                    # Multi-stage Python container
 │   ├── requirements.txt              # Python dependencies
 │   └── pyproject.toml                # Python project metadata
@@ -446,17 +450,24 @@ Urumi-Ai/
 ├── Frontend/                         # React Dashboard
 │   ├── src/
 │   │   ├── App.jsx                   # Root component with toast notifications
+│   │   ├── App.css                   # Global styles
 │   │   ├── main.jsx                  # React DOM entry point
+│   │   ├── index.css                 # Base CSS
 │   │   ├── api.js                    # Axios HTTP client for backend API
 │   │   ├── config.js                 # API base URL configuration
 │   │   ├── pages/
-│   │   │   └── Dashboard.jsx         # Main page: store list, stats, polling
+│   │   │   ├── Dashboard.jsx         # Main page: store list, stats, polling
+│   │   │   ├── Login.jsx             # OAuth login page
+│   │   │   └── AuthCallback.jsx      # OAuth callback handler
 │   │   └── components/
 │   │       ├── CreateStoreModal.jsx   # Modal form for WooCommerce / MedusaJS
 │   │       ├── StoreCard.jsx          # Store card with status, URLs, delete
 │   │       └── StatusBar.jsx          # Kubernetes connection health bar
 │   ├── Dockerfile                    # Nginx-based production container
 │   ├── nginx.conf                    # Nginx reverse proxy config
+│   ├── index.html                    # HTML entry point
+│   ├── vite.config.js                # Vite build configuration
+│   ├── eslint.config.js              # ESLint configuration
 │   └── package.json                  # Node.js dependencies
 │
 ├── helm/                             # Helm Charts
@@ -467,6 +478,7 @@ Urumi-Ai/
 │   │       ├── api.yaml              # API Deployment + Service
 │   │       ├── dashboard.yaml        # Dashboard Deployment + Service
 │   │       ├── ingress.yaml          # Platform ingress
+│   │       ├── secrets.yaml          # Platform secrets (JWT, OAuth, SMTP)
 │   │       └── rbac.yaml             # ServiceAccount + ClusterRole + Binding
 │   │
 │   ├── woocommerce/                  # WooCommerce store chart
@@ -489,9 +501,13 @@ Urumi-Ai/
 │       ├── values.yaml               # Default values
 │       ├── values-local.yaml         # Kind-specific overrides
 │       ├── values-prod.yaml          # Production overrides
+│       ├── docker/                   # Custom Medusa Docker images
+│       │   ├── medusa-backend/       # Medusa backend Dockerfile
+│       │   └── medusa-storefront/    # Medusa storefront Dockerfile
 │       └── templates/
 │           ├── medusa-deployment.yaml # Medusa backend (Node.js :9000)
 │           ├── medusa-service.yaml
+│           ├── medusa-config.yaml     # Medusa configuration ConfigMap
 │           ├── medusa-init-job.yaml   # DB migrations + seed + admin user
 │           ├── postgres-statefulset.yaml
 │           ├── postgres-service.yaml
@@ -508,16 +524,17 @@ Urumi-Ai/
 │   ├── setup-prod.sh                 # Install k3s on VPS
 │   ├── teardown-local.sh             # Delete Kind cluster
 │   ├── load-images-to-kind.sh        # Load Docker images into Kind
-│   └── ingress-controller.yaml       # NGINX Ingress Controller manifests
+│   ├── build-medusa-images.sh        # Build custom Medusa Docker images
+│   ├── setup-hosts-manager.sh        # Auto DNS via /etc/hosts
+│   ├── update-hosts.sh               # Sync store domains to /etc/hosts
+│   ├── test-woocommerce.sh           # WooCommerce integration tests
+│   ├── test-medusa.sh                # MedusaJS integration tests
+│   ├── ingress-controller.yaml       # NGINX Ingress Controller manifests
+│   └── urumi-ai-sudoers              # Sudoers config for hosts management
 │
-├── Docs/                             # Documentation
-│   ├── ARCHITECTURE.md               # System design, data flows, tradeoffs
-│   ├── SYSTEM_DESIGN.md              # Architecture decisions & security
-│   └── ...
-│
+├── .github/workflows/ci.yml          # CI pipeline (GitHub Actions)
+├── ARCHITECTURE.md                   # System design, data flows, tradeoffs
 ├── README.md                         # This file
-├── CONTRIBUTING.md                   # Contribution guidelines
-├── CHANGELOG.md                      # Version history
 └── LICENSE                           # MIT License
 ```
 
@@ -527,14 +544,17 @@ Urumi-Ai/
 
 ### Endpoints
 
-| Method | Endpoint | Description | Status Codes |
-|--------|----------|-------------|-------------|
-| `GET` | `/api/v1/health` | Health check + K8s connection status | 200 |
-| `GET` | `/api/v1/stores` | List all stores with status | 200 |
-| `GET` | `/api/v1/stores/{id}` | Get single store details | 200, 404 |
-| `POST` | `/api/v1/stores` | Create a new store (async provisioning) | 201, 409, 429 |
-| `DELETE` | `/api/v1/stores/{id}` | Delete a store (async teardown) | 200, 404, 409 |
-| `GET` | `/api/v1/stores/{id}/pods` | List Kubernetes pods for a store | 200, 404 |
+| Method | Endpoint | Auth | Description | Status Codes |
+|--------|----------|------|-------------|-------------|
+| `GET` | `/api/v1/health` | No | Health check + K8s connection status | 200 |
+| `GET` | `/api/v1/auth/login` | No | Redirect to Google OAuth | 302 |
+| `GET` | `/api/v1/auth/callback` | No | OAuth callback, issues JWT | 302 |
+| `GET` | `/api/v1/auth/me` | Yes | Get current user info | 200, 401 |
+| `GET` | `/api/v1/stores` | Yes | List user's stores with status | 200 |
+| `GET` | `/api/v1/stores/{id}` | Yes | Get single store details | 200, 404 |
+| `POST` | `/api/v1/stores` | Yes | Create a new store (async provisioning) | 201, 409, 429 |
+| `DELETE` | `/api/v1/stores/{id}` | Yes | Delete a store (async teardown) | 200, 404, 409 |
+| `GET` | `/api/v1/stores/{id}/pods` | Yes | List Kubernetes pods for a store | 200, 404 |
 
 ### Request / Response Examples
 
@@ -635,17 +655,32 @@ All configuration is via **environment variables** (or `.env` file in the Backen
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| **Core** | | |
 | `DEBUG` | `true` | Enable debug logging |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./stores.db` | Database connection string |
 | `KUBECONFIG` | `~/.kube/config` | Path to kubeconfig file |
 | `IN_CLUSTER` | `false` | Set `true` when running inside Kubernetes |
 | `HELM_BINARY` | `helm` | Path to Helm binary |
+| **Stores** | | |
 | `BASE_DOMAIN` | `local.store.dev` | Base domain for store subdomains |
 | `INGRESS_CLASS` | `nginx` | Kubernetes ingress class |
 | `MAX_STORES` | `10` | Maximum number of concurrent stores |
+| `MAX_STORES_PER_USER` | `5` | Per-user store limit |
 | `PROVISION_TIMEOUT_SECONDS` | `600` | Helm install timeout (seconds) |
-| `RATE_LIMIT_PER_MINUTE` | `10` | API rate limit per minute |
 | `NAMESPACE_PREFIX` | `store-` | Prefix for store Kubernetes namespaces |
+| **Auth (OAuth)** | | |
+| `JWT_SECRET_KEY` | *(dev default)* | JWT signing key (must change for production) |
+| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
+| `FRONTEND_URL` | `http://localhost:5173` | Frontend URL for OAuth redirect |
+| `CORS_ORIGINS` | — | Comma-separated allowed origins (production) |
+| **Email** | | |
+| `SMTP_HOST` | — | SMTP server for credential emails |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_USER` | — | SMTP username |
+| `SMTP_PASSWORD` | — | SMTP password (e.g., Gmail App Password) |
+| **Limits** | | |
+| `RATE_LIMIT_PER_MINUTE` | `10` | API rate limit per minute |
 
 ---
 
@@ -710,7 +745,7 @@ helm history my-shop --namespace store-my-shop
 - Store type: enum-validated (`woocommerce` or `medusa`)
 - Max store limit enforced at API level
 
-> 📖 For detailed security analysis, see [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md#security-considerations).
+> 📖 For detailed security analysis, see [ARCHITECTURE.md](ARCHITECTURE.md#security-considerations).
 
 ---
 
@@ -847,17 +882,13 @@ sudo lsof -i :80
 
 | Document | Description |
 |----------|-------------|
-| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) | System design, component diagram, data flows, isolation strategy, security, scaling |
-| [Docs/SYSTEM_DESIGN.md](Docs/SYSTEM_DESIGN.md) | Architecture decisions, tradeoffs, production considerations |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup and contribution guidelines |
-| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
-| [FIX_INGRESS.md](FIX_INGRESS.md) | Ingress troubleshooting guide |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, component diagram, data flows, isolation strategy, security, scaling |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) first.
+Contributions are welcome!
 
 ```bash
 # Fork and clone

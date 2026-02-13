@@ -716,4 +716,4 @@ helm rollback myshop 2 --namespace store-myshop
 
 ---
 
-*Last updated: 13 February 2026*
+*Last updated: February 2026*
